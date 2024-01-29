@@ -1,0 +1,377 @@
+rm(list = ls())
+
+#Open data file GoR_WAA1_2024 (data = s)
+#Year; waa - WAA age 1; R - age-1 abundance; SSB - spawning stock biomass; aug - mean August temperature; may - mean May temperature; sum - mean feeding period temperature; ws - winter severity; 
+#e - E. affinis affinis; a - Acartia spp. ; ea - E. affinis affinis & Acartia spp.; N - copepod nauplii; E1 copepodite stages I-III; E2 copepodite stages IV-V; E3 adult copepods; e_N - mean log abundances in May; e2_N mean log abundances in August.
+#0 indicates previous year values
+
+library(nlme)
+library(mgcv)
+
+#GAM analysis without interactions. Total time-series (1961-2020). 
+#Step 1
+summary(gam(waa ~ s(ea_N, k = 4), data = s)) 
+summary(gam(waa ~ s(ea_E1, k = 4), data = s)) 
+summary(gam(waa ~ s(ea_E2, k = 4), data = s))
+summary(gam(waa ~ s(ea_E3, k = 4), data = s)) 
+
+summary(gam(waa ~ s(ea2_N, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E1, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E2, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E3, k = 4), data = s)) 
+
+summary(gam(waa ~ s(ea_N0, k = 4), data = s))
+summary(gam(waa ~ s(ea_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(ea_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(ea_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(ea2_N0, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(ea2_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(e_N, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E1, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E2, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E3, k = 4), data = s))
+
+summary(gam(waa ~ s(e2_N, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E1, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E2, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E3, k = 4), data = s)) 
+
+summary(gam(waa ~ s(e_N0, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(e_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(e2_N0, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(e2_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(a_N, k = 4), data = s)) 
+summary(gam(waa ~ s(a_E1, k = 4), data = s))
+summary(gam(waa ~ s(a_E2, k = 4), data = s)) 
+summary(gam(waa ~ s(a_E3, k = 4), data = s)) 
+
+summary(gam(waa ~ s(a2_N, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E1, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E2, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E3, k = 4), data = s)) 
+
+summary(gam(waa ~ s(a_N0, k = 4), data = s)) 
+summary(gam(waa ~ s(a_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(a_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(a_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(a2_N0, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E10, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E20, k = 4), data = s)) 
+summary(gam(waa ~ s(a2_E30, k = 4), data = s)) 
+
+summary(gam(waa ~ s(may, k = 4), data = s)) 
+summary(gam(waa ~ s(may0, k = 4), data = s)) 
+summary(gam(waa ~ s(sum, k = 4), data = s)) 
+summary(gam(waa ~ s(sum0, k = 4), data = s)) 
+summary(gam(waa ~ s(ws, k = 4), data = s)) 
+
+summary(gam(waa ~ s(R, k = 4), data = s)) 
+summary(gam(waa ~ s(R0, k = 4), data = s)) 
+summary(gam(waa ~ s(SSB, k = 4), data = s)) 
+
+##############################################
+#Step 1
+summary(gam(waa ~ s(SSB, k = 4), data = s)) 
+
+#Do GAM check
+gam.check(gam(waa ~ s(SSB, k = 4), data = s)) #ok
+
+##############################################
+#Step 2; add a new variable and test the model
+#Step 2 model (final model)
+summary(gam(waa ~ s(SSB  , k = 4) + s(e_E1, k = 4), data = s))
+gam.check(gam(waa ~ s(SSB  , k = 4) + s(e_E1, k = 4), data = s))
+
+##############################################
+#Step 3; add a new variable and test the model
+#Step 3 model
+summary(gam(waa ~ s(SSB, k = 4) + s(e_E1, k = 4) + s(..., k = 4), data = s))
+
+##############################################################################
+
+#Divide data info time-periods
+#TS1 1961-1988
+#TS2 1989-2020
+
+idx=which(s$year %in% c(1961:1988))
+ts1=s[idx,]
+
+idx=which(s$year %in% c(1989:2020))
+ts2=s[idx,]
+
+######Repeat analysis with both time-periods using data = ts1 or data = ts 2. Do gam.check
+#TS final models 
+#TS 1 final model
+summary(gam(waa ~ s(e2_N, k = 4) + s(a_E2, k = 4), data = ts1))
+
+#TS 2 final model
+summary(gam(waa ~ s(a2_N0, k = 4) + s(e_E1, k = 4), data = ts2)) 
+
+##############################################################################
+
+#GAM - interaction with SSB; total time-series (1961-2020)
+
+summary(gam(waa ~ te(SSB, ea_N), data = s)) 
+summary(gam(waa ~ te(SSB, ea_E1), data = s)) 
+summary(gam(waa ~ te(SSB, ea_E2), data = s))
+summary(gam(waa ~ te(SSB, ea_E3), data = s))
+
+summary(gam(waa ~ te(SSB, ea2_N), data = s))
+summary(gam(waa ~ te(SSB, ea2_E1), data = s)) 
+summary(gam(waa ~ te(SSB, ea2_E2), data = s)) 
+summary(gam(waa ~ te(SSB, ea2_E3), data = s)) 
+
+summary(gam(waa ~ te(SSB, ea_N0), data = s)) 
+summary(gam(waa ~ te(SSB, ea_E10), data = s)) 
+summary(gam(waa ~ te(SSB, ea_E20), data = s)) 
+summary(gam(waa ~ te(SSB, ea_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, ea2_N0), data = s)) 
+summary(gam(waa ~ te(SSB, ea2_E10), data = s)) 
+summary(gam(waa ~ te(SSB, ea2_E20), data = s)) 
+summary(gam(waa ~ te(SSB, ea2_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, e_N), data = s)) 
+summary(gam(waa ~ te(SSB, e_E1), data = s)) 
+summary(gam(waa ~ te(SSB, e_E2), data = s)) 
+summary(gam(waa ~ te(SSB, e_E3), data = s)) 
+
+summary(gam(waa ~ te(SSB, e2_N), data = s)) 
+summary(gam(waa ~ te(SSB, e2_E1), data = s)) 
+summary(gam(waa ~ te(SSB, e2_E2), data = s)) 
+summary(gam(waa ~ te(SSB, e2_E3), data = s)) 
+
+summary(gam(waa ~ te(SSB, e_N0), data = s)) 
+summary(gam(waa ~ te(SSB, e_E10), data = s)) 
+summary(gam(waa ~ te(SSB, e_E20), data = s)) 
+summary(gam(waa ~ te(SSB, e_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, e2_N0), data = s)) 
+summary(gam(waa ~ te(SSB, e2_E10), data = s))
+summary(gam(waa ~ te(SSB, e2_E20), data = s)) 
+summary(gam(waa ~ te(SSB, e2_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, a_N), data = s)) 
+summary(gam(waa ~ te(SSB, a_E1), data = s)) 
+summary(gam(waa ~ te(SSB, a_E2), data = s)) 
+summary(gam(waa ~ te(SSB, a_E3), data = s)) 
+
+summary(gam(waa ~ te(SSB, a2_N), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E1), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E2), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E3), data = s))
+
+summary(gam(waa ~ te(SSB, a_N0), data = s))
+summary(gam(waa ~ te(SSB, a_E10), data = s)) 
+summary(gam(waa ~ te(SSB, a_E20), data = s)) 
+summary(gam(waa ~ te(SSB, a_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, a2_N0), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E10), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E20), data = s)) 
+summary(gam(waa ~ te(SSB, a2_E30), data = s)) 
+
+summary(gam(waa ~ te(SSB, may), data = s)) 
+summary(gam(waa ~ te(SSB, may0), data = s)) 
+summary(gam(waa ~ te(SSB, sum), data = s)) 
+summary(gam(waa ~ te(SSB, sum0), data = s)) 
+summary(gam(waa ~ te(SSB, ws), data = s)) 
+
+#####Step 1
+summary(gam(waa ~ te(SSB, e2_N), data = s)
+gam.check(gam(waa ~ te(SSB, e2_N), data = s)
+
+####Step 2 (final model)
+summary(gam(waa ~ te(SSB, e2_N)+ te(SSB, a_E3), data = s))
+
+############################################################
+#Repeate the same analysis with TS1 and TS2 
+
+#TS1 (1961-1988)
+#Final model
+summary(gam(waa ~ te(SSB, e2_E3), data = ts1))
+
+#TS2 (1989-2020)
+#Final model
+summary(gam(waa ~ te(SSB, e2_E2), data = ts2))
+
+##############################################################################
+
+#GAM - interaction with previous year R; total time-series (1961-2020)
+
+summary(gam(waa ~ te(R0, ea_N), data = s)) 
+summary(gam(waa ~ te(R0, ea_E1), data = s)) 
+summary(gam(waa ~ te(R0, ea_E2), data = s))
+summary(gam(waa ~ te(R0, ea_E3), data = s))
+
+summary(gam(waa ~ te(R0, ea2_N), data = s))
+summary(gam(waa ~ te(R0, ea2_E1), data = s)) 
+summary(gam(waa ~ te(R0, ea2_E2), data = s)) 
+summary(gam(waa ~ te(R0, ea2_E3), data = s)) 
+
+summary(gam(waa ~ te(R0, ea_N0), data = s)) 
+summary(gam(waa ~ te(R0, ea_E10), data = s)) 
+summary(gam(waa ~ te(R0, ea_E20), data = s)) 
+summary(gam(waa ~ te(R0, ea_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, ea2_N0), data = s)) 
+summary(gam(waa ~ te(R0, ea2_E10), data = s)) 
+summary(gam(waa ~ te(R0, ea2_E20), data = s)) 
+summary(gam(waa ~ te(R0, ea2_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, e_N), data = s)) 
+summary(gam(waa ~ te(R0, e_E1), data = s)) 
+summary(gam(waa ~ te(R0, e_E2), data = s)) 
+summary(gam(waa ~ te(R0, e_E3), data = s)) 
+
+summary(gam(waa ~ te(R0, e2_N), data = s)) 
+summary(gam(waa ~ te(R0, e2_E1), data = s)) 
+summary(gam(waa ~ te(R0, e2_E2), data = s)) 
+summary(gam(waa ~ te(R0, e2_E3), data = s)) 
+
+summary(gam(waa ~ te(R0, e_N0), data = s)) 
+summary(gam(waa ~ te(R0, e_E10), data = s)) 
+summary(gam(waa ~ te(R0, e_E20), data = s)) 
+summary(gam(waa ~ te(R0, e_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, e2_N0), data = s)) 
+summary(gam(waa ~ te(R0, e2_E10), data = s))
+summary(gam(waa ~ te(R0, e2_E20), data = s)) 
+summary(gam(waa ~ te(R0, e2_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, a_N), data = s)) 
+summary(gam(waa ~ te(R0, a_E1), data = s)) 
+summary(gam(waa ~ te(R0, a_E2), data = s)) 
+summary(gam(waa ~ te(R0, a_E3), data = s)) 
+
+summary(gam(waa ~ te(R0, a2_N), data = s)) 
+summary(gam(waa ~ te(R0, a2_E1), data = s)) 
+summary(gam(waa ~ te(R0, a2_E2), data = s)) 
+summary(gam(waa ~ te(R0, a2_E3), data = s))
+
+summary(gam(waa ~ te(R0, a_N0), data = s))
+summary(gam(waa ~ te(R0, a_E10), data = s)) 
+summary(gam(waa ~ te(R0, a_E20), data = s)) 
+summary(gam(waa ~ te(R0, a_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, a2_N0), data = s)) 
+summary(gam(waa ~ te(R0, a2_E10), data = s)) 
+summary(gam(waa ~ te(R0, a2_E20), data = s)) 
+summary(gam(waa ~ te(R0, a2_E30), data = s)) 
+
+summary(gam(waa ~ te(R0, may), data = s)) 
+summary(gam(waa ~ te(R0, may0), data = s)) 
+summary(gam(waa ~ te(R0, sum), data = s)) 
+summary(gam(waa ~ te(R0, sum0), data = s)) 
+summary(gam(waa ~ te(R0, ws), data = s)) 
+
+#####Step 1 (final step)
+summary(gam(waa ~ te(R0, ea2_E20), data = s))
+
+#Repete the same analysis with TS1 and TS2 
+
+#TS1 (1961-1988)
+#Final model
+summary(gam(waa ~ te(R0, sum0), data = ts1))
+
+#TS2 (1989-2020)
+#Final model
+summary(gam(waa ~ te(R0, ea2_E30), data = ts2))
+
+#######################################################################
+
+#GAM - interaction with R; total time-series (1961-2020)
+
+summary(gam(waa ~ te(R, ea_N), data = s)) 
+summary(gam(waa ~ te(R, ea_E1), data = s)) 
+summary(gam(waa ~ te(R, ea_E2), data = s))
+summary(gam(waa ~ te(R, ea_E3), data = s))
+
+summary(gam(waa ~ te(R, ea2_N), data = s))
+summary(gam(waa ~ te(R, ea2_E1), data = s)) 
+summary(gam(waa ~ te(R, ea2_E2), data = s)) 
+summary(gam(waa ~ te(R, ea2_E3), data = s)) 
+
+summary(gam(waa ~ te(R, ea_N0), data = s)) 
+summary(gam(waa ~ te(R, ea_E10), data = s)) 
+summary(gam(waa ~ te(R, ea_E20), data = s)) 
+summary(gam(waa ~ te(R, ea_E30), data = s)) 
+
+summary(gam(waa ~ te(R, ea2_N0), data = s)) 
+summary(gam(waa ~ te(R, ea2_E10), data = s)) 
+summary(gam(waa ~ te(R, ea2_E20), data = s)) 
+summary(gam(waa ~ te(R, ea2_E30), data = s)) 
+
+summary(gam(waa ~ te(R, e_N), data = s)) 
+summary(gam(waa ~ te(R, e_E1), data = s)) 
+summary(gam(waa ~ te(R, e_E2), data = s)) 
+summary(gam(waa ~ te(R, e_E3), data = s)) 
+
+summary(gam(waa ~ te(R, e2_N), data = s)) 
+summary(gam(waa ~ te(R, e2_E1), data = s)) 
+summary(gam(waa ~ te(R, e2_E2), data = s)) 
+summary(gam(waa ~ te(R, e2_E3), data = s)) 
+
+summary(gam(waa ~ te(R, e_N0), data = s)) 
+summary(gam(waa ~ te(R, e_E10), data = s)) 
+summary(gam(waa ~ te(R, e_E20), data = s)) 
+summary(gam(waa ~ te(R, e_E30), data = s)) 
+
+summary(gam(waa ~ te(R, e2_N0), data = s)) 
+summary(gam(waa ~ te(R, e2_E10), data = s))
+summary(gam(waa ~ te(R, e2_E20), data = s)) 
+summary(gam(waa ~ te(R, e2_E30), data = s)) 
+
+summary(gam(waa ~ te(R, a_N), data = s)) 
+summary(gam(waa ~ te(R, a_E1), data = s)) 
+summary(gam(waa ~ te(R, a_E2), data = s)) 
+summary(gam(waa ~ te(R, a_E3), data = s)) 
+
+summary(gam(waa ~ te(R, a2_N), data = s)) 
+summary(gam(waa ~ te(R, a2_E1), data = s)) 
+summary(gam(waa ~ te(R, a2_E2), data = s)) 
+summary(gam(waa ~ te(R, a2_E3), data = s))
+
+summary(gam(waa ~ te(R, a_N0), data = s))
+summary(gam(waa ~ te(R, a_E10), data = s)) 
+summary(gam(waa ~ te(R, a_E20), data = s)) 
+summary(gam(waa ~ te(R, a_E30), data = s)) 
+
+summary(gam(waa ~ te(R, a2_N0), data = s)) 
+summary(gam(waa ~ te(R, a2_E10), data = s)) 
+summary(gam(waa ~ te(R, a2_E20), data = s)) 
+summary(gam(waa ~ te(R, a2_E30), data = s)) 
+
+summary(gam(waa ~ te(R, may), data = s)) 
+summary(gam(waa ~ te(R, may0), data = s)) 
+summary(gam(waa ~ te(R, sum), data = s)) 
+summary(gam(waa ~ te(R, sum0), data = s)) 
+summary(gam(waa ~ te(R, ws), data = s)) 
+
+#####Step 1 (final step)
+summary(gam(waa ~ te(R, ea_E3), data = s))
+
+#Repeate the same analysis with TS1 and TS2 
+
+#TS1 (1961-1988)
+#Final model
+summary(gam(waa ~ te(R, a2_N), data = ts1))
+
+#TS2 (1989-2020)
+#Final model
+summary(gam(waa ~ te(R, a_E3), data = ts2))
+
+############END OF CODE
+
+

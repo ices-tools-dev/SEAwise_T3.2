@@ -1,0 +1,124 @@
+#Open data file GoR_WAA1_2024 (data = s)
+#Year; waa - WAA age 1; R - age-1 abundance; SSB - spawning stock biomass; aug - mean August temperature; may - mean May temperature; sum - mean feeding period temperature; ws - winter severity; 
+#e - E. affinis affinis; a - Acartia spp. ; ea - E. affinis affinis & Acartia spp.; N - copepod nauplii; E1 copepodite stages I-III; E2 copepodite stages IV-V; E3 adult copepods; e_N - mean log abundances in May; e2_N mean log abundances in August.
+#0 indicates previous year values
+
+library(colorRamps)
+library(mgcv)
+library(plotrix)
+
+#Figure 1
+#Generalized additive model (GAM) output without spawning stock biomass (SSB) or age-1 herring abundance interaction to describe a) partial effect of spawning stock biomass (SSB, thousand tons), b) partial effect of the abundance of E. affinis affinis (copepodite stages I–III, ln(ind. m-2)) in May on individual weight of age-1 herring (in grams) in the Gulf of Riga 1961–2020. Black dotted lines are 95% confidence intervals of the predicted lines (i.e., +-SE).
+
+quartz(width = 5.25, height = 2, pointsize = 8.5)
+if(TRUE){
+  n = 60
+  par(mfrow = c(1, 2), mar = c(2.5, 2.8, 2, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+  final = gam(waa ~ s(SSB, k = 4) + s(e_E1, k = 4), data = s)
+  newdata = data.frame(sort(unique(s$SSB)))
+  names(newdata) = "SSB"
+  newdata$e_E1 = median((s$e_E1))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ SSB, data = s, col = matlab.like(n), pch = 16, xlab = "Thousand tons", ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$SSB)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$SSB, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$SSB, lty = 3)
+  mtext("a) partial effect of SSB", side = 3, adj = 0)
+  
+  col.text = c(1960,"",1970,"",1980,"",1990,"", 2000,"", 2010, "", 2020)
+  color.legend(65,14,120,14.7,col.text,matlab.like(8),align = "rt",gradient = "x", cex = .7)
+  text(110,15.5, labels = "Color legend: year", cex = 0.7, pos = 2)
+  
+  final=gam(waa ~ s(SSB, k = 4) + s(e_E1, k = 4), data = s)
+  newdata = data.frame(sort(unique(s$e_E1)))
+  names(newdata) = "e_E1"
+  newdata$SSB = median((s$SSB))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ e_E1, data = s, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$e_E1)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
+  mtext("b) partial effect of E. affinis affinis May (I-III)", side=3, adj=0)
+}
+
+#Figure 2 
+#Generalized additive model (GAM) output to describe the a) partial effect of the abundance of E. affinis affinis (copepod nauplii ln(ind. m-2)) in August; b) a) partial effect of abundance of Acartia spp. (copepodite stage VI–V ln(ind. m-2)) in May in GoR on 1-year old herring individual weight (in grams) during 1961–1988. Black dotted lines are 95% confidence intervals of the predicted lines (i.e., +-SE). 
+
+quartz(width = 5.25, height = 2, pointsize = 8.5)
+if(TRUE){
+  n=28
+  par(mfrow = c(1, 2), mar = c(2.5, 2.8, 2, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+  final=gam(waa ~ s(e2_N, k = 4) + s(a_E2, k = 4), data = ts1)
+  newdata = data.frame(sort(unique(ts1$e2_N)))
+  names(newdata) = "e2_N"
+  newdata$a_E2 = median((ts1$a_E2))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ e2_N, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$e2_N)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$e2_N, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$e2_N, lty = 3)
+  mtext("a) partial effect of E. affinis affinis August (N)", side=3, adj=0)
+  
+  col.text = c(1960,"",1970,"",1980,"",1990)
+  color.legend(2,15.1,5.5,15.7,col.text,matlab.like(8),align="rt",gradient="x", cex = .7)
+  text(5.5,16.2, labels = "Color legend: year", cex = 0.7, pos = 2)
+  
+  final=gam(waa ~ s(e2_N, k = 4) + s(a_E2, k = 4), data = ts1)
+  newdata = data.frame(sort(unique(ts1$a_E2)))
+  names(newdata) = "a_E2"
+  newdata$e2_N = median((ts1$e2_N))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ a_E2, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$a_E2)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$a_E2, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$a_E2, lty = 3)
+  mtext("b) partial effect of Acartia spp. May (VI-V)", side=3, adj=0)
+  
+}
+
+#Figure 3
+#Generalized additive model (GAM) output to describe the a) partial effect of previous year abundance of Acartia spp. (copepod nauplii ln(ind. m-2)) in August; b) partial effect of the abundance of E. affinis affinis (copepodite stage I–III ln(ind. m-2)) in May in GoR on 1-year old herring individual weight (in grams) during 1989–2020. Black dotted lines are 95% confidence intervals of the predicted lines (i.e., +-SE).
+
+quartz(width = 5.25, height=2, pointsize=8.5)#2 column wide, 1 row high
+if(TRUE){
+  n=32
+  par(mfrow = c(1, 2), mar = c(2.5, 2.8, 2, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+  final=gam(waa ~ s(a2_N0, k = 4) + s(e_E1, k = 4), data=ts2)
+  newdata = data.frame(sort(unique(ts2$a2_N0)))
+  names(newdata) = "a2_N0"
+  newdata$e_E1 = median((ts2$e_E1))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ a2_N0, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$a2_N0)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$a2_N0, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$a2_N0, lty = 3)
+  mtext("a) partial effect of prev. Acartia spp. August (N)", side=3, adj=0)
+  
+  col.text = c(1990,"",2000,"",2010,"",2020)
+  color.legend(2,13.1,5.5,13.7,col.text,matlab.like(8),align="rt",gradient="x", cex = .7)
+  text(5.5,14.2, labels = "Color legend: year", cex = 0.7, pos = 2)
+  
+  final=gam(waa ~ s(a2_N0, k = 4) + s(e_E1, k = 4), data=ts2)
+  newdata = data.frame(sort(unique(ts2$e_E1)))
+  names(newdata) = "e_E1"
+  newdata$a2_N0 = median((ts2$a2_N0))
+  pred = predict(final, newdata = newdata, se = T)
+  plot(waa ~ e_E1, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  lines(pred$fit ~ newdata$e_E1)
+  lines(pred$fit + 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
+  lines(pred$fit - 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
+  mtext("b) partial effect of E. affinis affinis May (I-III)", side=3, adj=0)
+  
+}
+
+#Figure 4
+#Generalized additive model (GAM) output with interaction with spawning stock biomass (SSB, thousand tons) to describe the a) partial effect of the abundance of E. affinis affinis (nauplii, ln(ind. m-2)) in August; b) partial effect of the abundance of Acartia spp. (adult, ln(ind. m-2)) in May on individual weight of age-1 herring (in grams) in the Gulf of Riga during the second year of life in the period of 1961–2020.
+summary(gam(waa ~ te(SSB, e2_N)+ te(SSB, a_E3), data = s))
+
+#Figure 5
+#Generalized additive model (GAM) output with interaction of age–1 herring abundance (106 individuals) to describe the partial effect of the abundance of E. affinis affinis and Acartia spp. (copepodites IV-V, ln(ind. m-2)) in August on individual weight of age-1 herring (in grams) in the Gulf of Riga during the year of hatch in the period of 1961–2020. 
+summary(gam(waa ~ te(R0, ea2_E20), data = s))
+
+#Figure 6
+#Generalized additive model (GAM) output with interaction of age–1 herring abundance (106 individuals) to describe the partial effect of the abundance of E. affinis affinis and Acartia spp. (adult, ln(ind. m-2)) in May on individual weight of age-1 herring (in grams) in the Gulf of Riga during the second year of life in the period of 1961–2020 
+summary(gam(waa ~ te(R, ea_E3), data = s))

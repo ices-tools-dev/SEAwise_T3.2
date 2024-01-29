@@ -1,0 +1,240 @@
+rm(list = ls())
+
+#Open data file GoR_WAA1_2024 (data = s)
+#Year; waa - WAA age 1; R - age-1 abundance; SSB - spawning stock biomass; aug - mean August temperature; may - mean May temperature; sum - mean feeding period temperature; ws - winter severity; 
+#e - E. affinis affinis; a - Acartia spp. ; ea - E. affinis affinis & Acartia spp.; N - copepod nauplii; E1 copepodite stages I-III; E2 copepodite stages IV-V; E3 adult copepods; e_N - mean log abundances in May; e2_N mean log abundances in August.
+#0 indicates previous year values
+
+#Figure 1
+#Time-series (years 1961–2020) of the Gulf of Riga herring a) age-1 abundance  (age-1, 106 individuals) and spawning stock biomass (SSB, thousand tonnes) and b) weight at age (WWA, grams) of 1-year old fish (Ojaveer 1988 and references therein; Ojaveer et al. 2004; ICES 2023).
+if(TRUE){
+quartz(width = 8.6, height = 4.0)
+par(mfrow = c(1, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+plot(s$SSB ~ s$year, pch = 16, 
+     col = 96, 
+     axes = T,
+     ylab = "SSB (x1000 tons)", xlab = "Year")
+
+lines(s$SSB ~ s$year, col = 96)
+axis(2, col = 1)
+axis(1, at = c(1960, 1970, 1980, 1990, 2000, 2010), col = 1)
+lines(c(1962, 1966),c(120, 120), col = 96)
+lines(c(1962, 1966), c(110, 110))
+points(1964, 120, pch = 16, col = 96)
+points(1964, 110, pch = 16)
+text(c(1968, 1968),c(120, 110), labels = c("SSB", "Age-1"), pos = 4)
+par(new = T)
+plot(s$R~ s$year, pch = 16, axes = F, ylab="", xlab = "", col = 1)
+lines(s$R ~ s$year)
+axis(4, col =1)
+mtext(expression(paste("Age-1 (",10^6," individuals)")), side = 4, line = 1.5, cex = 1, col = 1)
+mtext("a) Age-1, SSB", side = 3, adj = 0, line = 0, cex = 1) 
+
+
+#growth 
+plot(s$waa ~ s$year, pch = 16, 
+     col = 1, 
+     axes = T,
+     ylab = "g", xlab="Year")
+
+lines(s$waa ~ s$year, col = 1)
+axis(2, col=1)
+axis(1, at = c(1960, 1970, 1980, 1990, 2000, 2010), col=1)
+mtext("b) Weight at age", side = 3, adj = 0, line = 0, cex = 1)
+}
+##################################################################################################
+#Figure 2
+#E. affinis affinis mean annual abundance (ln(ind. m-2)) in May in the Gulf of Riga 1961–2020.
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(e_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) E. affinis affinis May (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e_E1 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("b) E. affinis affinis May (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) E. affinis affinis May (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) E. affinis affinis May (adult)", side = 3, adj = 0, line = 0, cex = .8)   
+}
+
+##################################################################################################
+#Figure 3
+#E. affinis affinis mean annual abundance (ln(ind. m-2)) in August in the Gulf of Riga 1961–2020.
+
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(e2_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab =expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e2_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) E. affinis affinis August (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e2_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e2_E1 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("b) E. affinis affinis August (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e2_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e2_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) E. affinis affinis August (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(e2_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(e2_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) E. affinis affinis August (adult)", side = 3, adj = 0, line = 0, cex = .8)   
+}
+
+##################################################################################################
+#Figure 4
+#Acartia spp. mean annual abundance (ln(ind. m-2)) in May in the Gulf of Riga 1961–2020.
+
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(a_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) Acartia spp. May (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a_E1 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("b) Acartia spp. May (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) Acartia spp. May (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab="Year", ylim=c(0, 15))
+  lines(a_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) Acartia spp. May (adult)", side = 3, adj = 0, line = 0, cex = .8)   
+}
+
+##################################################################################################
+#Figure 5
+#Acartia spp. mean annual abundance (ln(ind. m-2)) in August in the Gulf of Riga 1961–2020.
+
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(a2_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a2_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) Acartia spp. August (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a2_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a2_E1 ~ year, data = s, col = 1)
+  axis(2, col=1)
+  mtext("b) Acartia spp. August (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a2_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a2_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) Acartia spp. August (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(a2_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(a2_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) Acartia spp. August (adult)", side = 3, adj = 0, line = 0, cex = .8) 
+}  
+
+##################################################################################################
+#Figure 6
+#Acartia app. and E. affinis affinis mean annual sum abundance (ln(ind. m-2)) in May in the Gulf of Riga 1961–2020. 
+
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(ea_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) E. affinis affinis & Acartia spp. May (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea_E1 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("b) E. affinis affinis & Acartia spp. May (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) E. affinis affinis & Acartia spp. May (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) E. affinis affinis & Acartia spp. May (adult)", side = 3, adj = 0, line = 0, cex = .8)   
+}
+
+##################################################################################################
+#Figure 7
+#Acartia spp. and E. affinis affinis mean annual sum abundance (ln(ind. m-2)) in August in the Gulf of Riga 1961–2020.
+
+quartz(width = 6.8, height = 4)
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(ea2_N ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea2_N ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("a) E. affinis affinis & Acartia spp. August (N)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea2_E1 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea2_E1 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("b) E. affinis affinis & Acartia spp. August (I-III)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea2_E2 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea2_E2 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("c) E. affinis affinis & Acartia spp. August (IV-V)", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(ea2_E3 ~ year, data = s, pch = 16, col = 1, axes = T, ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "Year", ylim = c(0, 15))
+  lines(ea2_E3 ~ year, data = s, col = 1)
+  axis(2, col = 1)
+  mtext("d) E. affinis affinis &Acartia spp. August (adult)", side = 3, adj = 0, line = 0, cex = .8) 
+}  
+
+##################################################################################################
+#Figure 8
+#Yearly mean a) mean May temperature (air temperature, °C); b) mean feeding period temperature (June–September air temperature, °C); c) winter severity (sum of negative daily mean air temperatures, °C from November to March). Data from the Kihnu weather station (years 1961–2020) provided by the Estonian Weather Service.
+
+if(TRUE){
+  par(mfrow = c(2, 2), tck = -0.02, mar = c(2.5,2.8,2,2.8), mgp = c(1.3,0.3,0))
+  plot(s$may ~ s$year, pch = 16, col = 1, axes = T, ylab = "°C", xlab = "Year")
+  lines(s$may ~ s$year, col = 1)
+  axis(2, col = 1)
+  mtext("a) Mean May air temperature", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(s$sum ~ s$year, pch = 16, col = 1, axes = T, ylab = "°C", xlab = "Year")
+  lines(s$sum ~ s$year, col = 1)
+  axis(2, col = 1)
+  mtext("b) Mean summer air temperature", side = 3, adj = 0, line = 0, cex = .8) 
+  
+  plot(s$ws ~ s$year, pch = 16, col = 1, axes = T, ylab = "Sum of neg. air temp. (°C)", xlab = "Year")
+  lines(s$ws ~ s$year, col = 1)
+  axis(2, col = 1)
+  mtext("c) Winter severity", side = 3, adj = 0, line = 0, cex = .8)   
+}
+
+#####END OF CODE
