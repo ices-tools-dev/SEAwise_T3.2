@@ -279,7 +279,7 @@ summary(gam(waa ~ te(R0, ws), data = s))
 #####Step 1 (final step)
 summary(gam(waa ~ te(R0, ea2_E20), data = s))
 
-#Repete the same analysis with TS1 and TS2 
+#Repeate the same analysis with TS1 and TS2 
 
 #TS1 (1961-1988)
 #Final model
