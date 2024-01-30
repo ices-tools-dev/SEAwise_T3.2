@@ -34,7 +34,7 @@ if(TRUE){
   names(newdata) = "e_E1"
   newdata$SSB = median((s$SSB))
   pred = predict(final, newdata = newdata, se = T)
-  plot(waa ~ e_E1, data = s, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  plot(waa ~ e_E1, data = s, col = matlab.like(n), pch = 16, xlab = expression(paste("Abundance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
   lines(pred$fit ~ newdata$e_E1)
   lines(pred$fit + 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
   lines(pred$fit - 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
@@ -53,7 +53,7 @@ if(TRUE){
   names(newdata) = "e2_N"
   newdata$a_E2 = median((ts1$a_E2))
   pred = predict(final, newdata = newdata, se = T)
-  plot(waa ~ e2_N, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  plot(waa ~ e2_N, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abundance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
   lines(pred$fit ~ newdata$e2_N)
   lines(pred$fit + 2 * pred$se.fit ~ newdata$e2_N, lty = 3)
   lines(pred$fit - 2 * pred$se.fit ~ newdata$e2_N, lty = 3)
@@ -68,7 +68,7 @@ if(TRUE){
   names(newdata) = "a_E2"
   newdata$e2_N = median((ts1$e2_N))
   pred = predict(final, newdata = newdata, se = T)
-  plot(waa ~ a_E2, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  plot(waa ~ a_E2, data=ts1, col = matlab.like(n), pch = 16, xlab = expression(paste("Abundance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
   lines(pred$fit ~ newdata$a_E2)
   lines(pred$fit + 2 * pred$se.fit ~ newdata$a_E2, lty = 3)
   lines(pred$fit - 2 * pred$se.fit ~ newdata$a_E2, lty = 3)
@@ -88,7 +88,7 @@ if(TRUE){
   names(newdata) = "a2_N0"
   newdata$e_E1 = median((ts2$e_E1))
   pred = predict(final, newdata = newdata, se = T)
-  plot(waa ~ a2_N0, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  plot(waa ~ a2_N0, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abundance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
   lines(pred$fit ~ newdata$a2_N0)
   lines(pred$fit + 2 * pred$se.fit ~ newdata$a2_N0, lty = 3)
   lines(pred$fit - 2 * pred$se.fit ~ newdata$a2_N0, lty = 3)
@@ -103,7 +103,7 @@ if(TRUE){
   names(newdata) = "e_E1"
   newdata$a2_N0 = median((ts2$a2_N0))
   pred = predict(final, newdata = newdata, se = T)
-  plot(waa ~ e_E1, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abudance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
+  plot(waa ~ e_E1, data=ts2, col = matlab.like(n), pch = 16, xlab = expression(paste("Abundance ln(ind. ",m**-2,")")), ylab = "g", axes = T); axis(1); axis(2)
   lines(pred$fit ~ newdata$e_E1)
   lines(pred$fit + 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
   lines(pred$fit - 2 * pred$se.fit ~ newdata$e_E1, lty = 3)
@@ -115,10 +115,143 @@ if(TRUE){
 #Generalized additive model (GAM) output with interaction with spawning stock biomass (SSB, thousand tons) to describe the a) partial effect of the abundance of E. affinis affinis (nauplii, ln(ind. m-2)) in August; b) partial effect of the abundance of Acartia spp. (adult, ln(ind. m-2)) in May on individual weight of age-1 herring (in grams) in the Gulf of Riga during the second year of life in the period of 1961–2020.
 summary(gam(waa ~ te(SSB, e2_N)+ te(SSB, a_E3), data = s))
 
+if(T){
+  
+  par(mfrow = c(1, 2), mar = c(2.5, 2.7, 1.6, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+
+ #2019, 2020, 2013, 1995, 1996, 1962, 1966 - leave out outliers 
+  idx = which(s$year %in% c(1961, 1963, 1964, 1965, 1967, 1968, 1969, 1970, 1971, 1972, 1973, 1974, 1975, 1976, 1977, 1978, 1979, 1980, 1981, 1982, 1983, 1984, 1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2014, 2015, 2016, 2017, 2018))
+  var = s$waa[idx]
+  SSB = s$SSB[idx]
+  e2_N = s$e2_N[idx]
+  m = gam(var ~ te( SSB, e2_N))
+  SSB = seq(min(SSB), max(SSB), length.out = 100)
+  e2_N = seq(min(e2_N), max(e2_N), length.out = 100)
+  
+  predicted = matrix(ncol=length(SSB),nrow = length(e2_N))
+  se =  matrix(ncol=length(SSB),nrow = length(e2_N))
+  
+  for(i in 1:length(e2_N)){ 
+    new.data = data.frame(SSB,e2_N[i])
+    names(new.data)<-c("SSB","e2_N")
+    pred = predict.gam(m, newdata = new.data, se = T)
+    predicted[,i] = pred$fit
+    se[,i] = pred$se.fit
+  }
+  
+  idx2 = which(se > predicted/5.5) 
+  predicted[idx2] = NA
+  
+  predicted[which(se > predicted/5.5)] = NA
+  image(predicted,col = matlab.like(20),axes = F , ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "SSB (thousand tons)")
+  contour(predicted, levels = c(7,8,9,10, 11, 12),add = T)
+  par(new = T)
+  plot(s$e2_N[idx]~s$SSB[idx], pch=1 , xlab = "", ylab = "")  
+  mtext("a) SSB x E. affinis affinis Aug. (N)", side=3, adj = 0)
+  
+  #1987 - leave out outliers
+  idx = which(s$year %in% c(1961, 1962, 1963, 1964, 1965, 1966, 1967, 1968, 1969, 1970, 1971, 1972, 1973, 1974, 1975, 1976, 1977, 1978, 1979, 1980, 1981, 1982, 1983, 1984, 1985, 1986, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2013, 2012, 2014, 2015, 2016, 2017, 2018, 2019, 2020))
+  
+  var = s$waa[idx]
+  SSB = s$SSB[idx]
+  a_E3 = s$a_E3[idx]
+  m = gam(var ~ te(a_E3,SSB))
+  a_E3 = seq(min(a_E3), max(a_E3), length.out = 100)
+  SSB = seq(min(SSB), max(SSB), length.out = 100)
+  predicted = matrix(ncol = length(SSB),nrow = length(a_E3))
+  se =  matrix(ncol = length(SSB),nrow = length(a_E3))
+  
+  for(i in 1:length(a_E3)){ 
+    new.data = data.frame(SSB,a_E3[i])
+    names(new.data)<-c("SSB", "a_E3")
+    pred = predict.gam(m, newdata = new.data, se = T)
+    predicted[,i] = pred$fit
+    se[,i] = pred$se.fit
+  }
+  
+  idx2 = which(se > predicted/2)
+  predicted[idx2] = NA
+  
+  image(predicted,col=matlab.like(20),axes = F , ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab = "SSB (thousand tons)")
+  contour(predicted,levels = c(7, 8, 9, 10, 11, 12, 13, 14),add = T)
+  par(new = T)
+  plot(s$a_E3[idx] ~ s$SSB[idx], pch = 1, xlab = "", ylab = "")
+  mtext("b) SSB x Acartia spp. May (adult)", side = 3, adj = 0)
+
+}
+
+
 #Figure 5
 #Generalized additive model (GAM) output with interaction of age–1 herring abundance (106 individuals) to describe the partial effect of the abundance of E. affinis affinis and Acartia spp. (copepodites IV-V, ln(ind. m-2)) in August on individual weight of age-1 herring (in grams) in the Gulf of Riga during the year of hatch in the period of 1961–2020. 
 summary(gam(waa ~ te(R0, ea2_E20), data = s))
 
+if(T){
+  
+  par(mfrow = c(1, 1), mar = c(2.5, 2.7, 1.6, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+  
+  var = s$waa
+  R0 = s$R0
+  ea2_E20 = s$ea2_E20
+  m = gam(var ~ te(R0, ea2_E20))
+  R0 = seq(min(R0), max(R0), length.out = 100)
+  ea2_E20 = seq(min(ea2_E20), max(ea2_E20), length.out = 100)
+  
+  predicted = matrix(ncol=length(R0),nrow = length(ea2_E20))
+  se =  matrix(ncol=length(R0),nrow = length(ea2_E20))
+  
+  for(i in 1:length(ea2_E20)){ 
+    new.data = data.frame(R0,ea2_E20[i])
+    names(new.data)<-c("R0","ea2_E20")
+    pred = predict.gam(m, newdata = new.data, se = T)
+    predicted[,i] = pred$fit
+    se[,i] = pred$se.fit
+  }
+  
+  idx2 = which(se > predicted/2) 
+  predicted[idx2] = NA
+  
+  predicted[which(se > predicted/2)] = NA
+  image(predicted,col = matlab.like(20),axes = F , ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab =expression(paste("Age-1 (",10^6," individuals)")))
+  contour(predicted, levels = c(7,8,9,10, 11, 12),add = T)
+  par(new = T)
+  plot(s$ea2_E20~s$R0, pch=1 , xlab = "", ylab = "")  
+  mtext("Prev. age-1 x prev. E. affinis affinis and Acartia spp. August (IV-V)", side=3, adj = 0)
+}
+
 #Figure 6
 #Generalized additive model (GAM) output with interaction of age–1 herring abundance (106 individuals) to describe the partial effect of the abundance of E. affinis affinis and Acartia spp. (adult, ln(ind. m-2)) in May on individual weight of age-1 herring (in grams) in the Gulf of Riga during the second year of life in the period of 1961–2020 
 summary(gam(waa ~ te(R, ea_E3), data = s))
+
+if(T){
+  
+  par(mfrow = c(1, 1), mar = c(2.5, 2.7, 1.6, 1), mgp = c(1.3, 0.3, 0), tck = -0.02)
+  
+  var = s$waa
+  R = s$R
+  ea_E3 = s$ea_E3
+  m = gam(var ~ te(R, ea_E3))
+  R = seq(min(R), max(R), length.out = 100)
+  ea_E3 = seq(min(ea_E3), max(ea_E3), length.out = 100)
+  
+  predicted = matrix(ncol=length(R),nrow = length(ea_E3))
+  se =  matrix(ncol=length(R),nrow = length(ea_E3))
+  
+  for(i in 1:length(ea_E3)){ 
+    new.data = data.frame(R,ea_E3[i])
+    names(new.data)<-c("R","ea_E3")
+    pred = predict.gam(m, newdata = new.data, se = T)
+    predicted[,i] = pred$fit
+    se[,i] = pred$se.fit
+  }
+  
+  idx2 = which(se > predicted/2) 
+  predicted[idx2] = NA
+  
+  predicted[which(se > predicted/2)] = NA
+  image(predicted,col = matlab.like(20),axes = F , ylab = expression(paste("Abundance ln(ind. ",m**-2,")")), xlab =expression(paste("Age-1 (",10^6," individuals)")))
+  contour(predicted, levels = c(7,8,9,10, 11, 12),add = T)
+  par(new = T)
+  plot(s$ea_E3~s$R, pch=1 , xlab = "", ylab = "")  
+  mtext("Age-1 x E. affinis affinis and Acartia spp. May (adult)", side=3, adj = 0)
+}
+##END OF CODE
