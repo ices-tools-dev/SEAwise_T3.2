@@ -1,0 +1,453 @@
+---
+title: "Classic SR models in FLR for anchovy in subarea 8 (1987-2021)"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# load libraries
+library(FLCore)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(flextable)
+
+library(EnvCpt)
+library(changepoint)
+library(changepoint.np)
+library(cpm)
+library(strucchange)
+
+library(readxl)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+```{r}
+# load object from WGHANSA 2022
+load(file.path("..","data","aneq.stk.RData")) # aneq.stk
+
+# remove 2023
+
+aneq.stk <- window(aneq.stk, end=2022)
+
+# recruitment (1st January)
+# change units
+
+rec <- rec(aneq.stk)
+rec <- rec*1e-6
+units(rec) <- "1e9"
+
+# ssb (from FLBiols because it is the same as used in FLBEIA)
+
+aneq.biol <- as(aneq.stk, "FLBiol")
+ssb <- ssb(aneq.biol)
+# equivalently, (i.e. without fishing mortality)
+# quantSums(stock.n(aneq.stk)*exp(-m(aneq.stk)*m.spwn(aneq.stk))*stock.wt(aneq.stk)*mat(aneq.stk))
+ssb <- ssb/1000
+units(ssb) <- "1000 t"
+
+# create data frame
+
+df <- data.frame(year=as.numeric(dimnames(aneq.stk)$year), 
+                 rec=as.numeric(rec), 
+                 ssb=as.numeric(ssb))
+
+# create log variables
+
+df <- df %>% 
+  mutate(logr=log(rec),
+         logssb=log(ssb),
+         rat=rec/ssb, 
+         lograt=log(rat))
+
+# load data from assessment (same as prepared by Ixak, Almudena and Leire)
+
+sr.dat <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="R_SSB")
+
+# current Blim (21 000 tonnes)
+
+Blim <- 21
+
+# compare the SSB derived from the FLStock object with the official SSB
+# and the R (age0 in numbers) derived from the FLStock object with the official R (age1 in mass)
+
+tmp <- left_join(df, sr.dat, by = c("year" = "Year"))
+  
+p <- ggplot(tmp, aes(ssb, SSB/1000))+
+  geom_point()+
+  geom_abline(intercept=0, slope=1, col=2)+
+  expand_limits(x=0, y=0)
+p
+
+p <- ggplot(tmp, aes(lag(rec), R_age1))+
+  geom_point()+
+  expand_limits(x=0, y=0)
+p
+
+# print data.frame to check data
+
+ft <- flextable(df)
+ft
+
+```
+
+```{r}
+# summary statistics ssb
+summary(as.numeric(df$ssb))
+
+# summary statistics rec
+summary(as.numeric(df$rec))
+
+# geometric mean of recruitment
+exp(mean(log(df$rec))) # all: 1987-2021
+```
+
+```{r}
+p <- ggplot(df, aes(ssb, rec, label = year)) +
+  geom_point(color = "red")+
+  geom_path()+
+  geom_text_repel()+
+  xlab("SSB")+
+  ylab("Recruits (age 0)")+
+  expand_limits(y=0, x=0)
+p
+
+p <- ggplot(df, aes(ssb, rec)) +
+  geom_point() + 
+  xlab("SSB")+
+  ylab("Recruits (age 0)")+
+  expand_limits(y=0, x=0)
+p
+
+p <- ggplot(df, aes(ssb, rec)) +
+  geom_point() + 
+  geom_smooth(method="loess")+
+  xlab("SSB")+
+  ylab("Recruits (age 0)")+
+  expand_limits(y=0, x=0)
+p
+
+p <- ggplot(df, aes(year, rec, label = year)) +
+  geom_point(color = "red")+
+  geom_path()+
+  geom_text_repel()+
+  xlab("Year")+
+  ylab("Recruits (age 0)")
+p
+
+p <- ggplot(df, aes(year, rec)) +
+  geom_bar(stat="identity", fill="red", alpha=0.4)+
+  xlab("Year")+
+  ylab("Recruits (age 0)")+
+  geom_vline(xintercept = c(2004.5, 2009.5), lty=2)
+p
+```
+
+# Ricker SR model
+
+```{r}
+#Ricker stock-recruitment model 
+sr.rick <- FLSR(rec=rec, ssb=ssb)
+model(sr.rick) <- "ricker"
+sr.rick <- fmle(sr.rick)
+c(params(sr.rick))
+summary(sr.rick)
+plot(sr.rick)
+profile(sr.rick, main="Ricker")
+
+# code to check auto-correlation in residuals
+res <- c(residuals(sr.rick)) # log(rec(sr.rick)) - log(fitted(sr.rick))
+acf(res)
+pacf(res)
+ar1 <- stats::ar(res, aic=F, order.max=1)
+print(ar1)
+cbind(rho=ar1$ar, var.pred=ar1$var.pred)
+cor(res[- length(res)], res[-1])
+ct <- cor.test(res[- length(res)], res[-1])
+cbind(rho=ct$estimate, low=ct$conf.int[1], up=ct$conf.int[2], pval=ct$p.value)
+
+# Ricker stock-recruitment model with auto-regressive normal log residuals of first order:
+
+sr.rickAR1 <- FLSR(rec=rec, ssb=ssb)
+model(sr.rickAR1) <- "rickerAR1"
+sr.rickAR1 <- fmle(sr.rickAR1)
+c(params(sr.rickAR1))
+summary(sr.rickAR1)
+plot(sr.rickAR1)
+```
+
+# Beverton-Holt SR model:
+
+```{r}
+sr.bh <- FLSR(rec=rec, ssb=ssb)
+model(sr.bh) <- "bevholt"
+sr.bh <- fmle(sr.bh)
+c(params(sr.bh))
+summary(sr.bh)
+plot(sr.bh)
+profile(sr.bh, main="BH")
+
+# code to check auto-correlation in residuals
+res <- c(residuals(sr.bh)) 
+acf(res)
+pacf(res)
+ar1 <- stats::ar(res, aic=F, order.max=1)
+print(ar1)
+cbind(rho=ar1$ar, var.pred=ar1$var.pred)
+cor(res[- length(res)], res[-1])
+ct <- cor.test(res[- length(res)], res[-1])
+cbind(rho=ct$estimate, low=ct$conf.int[1], up=ct$conf.int[2], pval=ct$p.value)
+
+## Beverton-Holt stock-recruitment model with auto-regressive normal log residuals of first order:
+# convergence issues
+
+sr.bhAR1 <- FLSR(rec=rec, ssb=ssb)
+model(sr.bhAR1) <- "bevholtAR1"
+# sr.bhAR1 <- fmle(sr.bhAR1) # It gives NA's. 
+# We try other optimization methods: 
+sr.bhAR1 <- fmle(sr.bhAR1, method="L-BFGS-B")
+c(params(sr.bhAR1))
+summary(sr.bhAR1)
+plot(sr.bhAR1)
+
+## Beverton-Holt stock-recruitment model (parameterised in terms of steepness and virgin biomass):
+
+sr.bhsv <- FLSR(rec=rec, ssb=ssb)
+model(sr.bhsv) <- "bevholtSV"
+sr.bhsv <- fmle(sr.bhsv)
+c(params(sr.bhsv))
+summary(sr.bhsv)
+as.numeric(abPars("bevholt", s = params(sr.bhsv)$s, v = params(sr.bhsv)$v, spr0 = params(sr.bhsv)$spr0)) # transformation to a, b parameterization 
+c(params(sr.bh)) # the two parameterizations give different results, but it may be due to convergence problems in bhsv model (there are warnings in model fit & strange model plot)
+plot(sr.bhsv)
+```
+
+# Hockey-Stick SR model 
+
+```{r}
+#Hockey-stick (also called segmented regression) stock-recruitment model:
+sr.hs <- FLSR(rec=rec, ssb=ssb)
+model(sr.hs) <- "segreg"
+sr.hs <- fmle(sr.hs)
+params(sr.hs) 
+# the default method "Nelder-Mead" gives b values within the observed SSB range
+# in this case, we don't need to fit again using "SANN" method. For more info on methods, see ?optim
+# sr.hs <- fmle(sr.hs, method="SANN")
+params(sr.hs) 
+summary(sr.hs)
+plot(sr.hs)
+profile(sr.hs, main="HS")
+
+# code to check auto-correlation in residuals
+res <- c(residuals(sr.hs)) 
+acf(res)
+pacf(res)
+ar1 <- stats::ar(res, aic=F, order.max=1)
+print(ar1)
+cbind(rho=ar1$ar, var.pred=ar1$var.pred)
+cor(res[- length(res)], res[-1])
+ct <- cor.test(res[- length(res)], res[-1])
+cbind(rho=ct$estimate, low=ct$conf.int[1], up=ct$conf.int[2], pval=ct$p.value)
+
+## Hockey-stick with auto-regressive normal log residuals of first order:
+
+sr.hsAR1 <- FLSR(rec=rec, ssb=ssb)
+model(sr.hsAR1) <- "segregAR1"
+sr.hsAR1 <- fmle(sr.hsAR1)
+params(sr.hsAR1)
+summary(sr.hsAR1)
+plot(sr.hsAR1)
+
+## Hockey-stick stock-recruitment model with the breakpoint fixed at Blim:
+
+sr.hsblim <- FLSR(rec=rec, ssb=ssb)
+model(sr.hsblim) <- "segreg"
+sr.hsblim <- fmle(sr.hsblim, fixed=list(b=Blim))
+params(sr.hsblim)
+summary(sr.hsblim)
+plot(sr.hsblim)
+```
+
+# Geometric Mean SR model 
+
+```{r}
+# Geometric mean stock-recruitment model:
+sr.gm <- FLSR(rec=rec, ssb=ssb)
+model(sr.gm) <- "geomean"
+sr.gm <- fmle(sr.gm)
+params(sr.gm)
+summary(sr.gm)
+plot(sr.gm)
+
+# code to check auto-correlation in residuals
+res <- c(residuals(sr.gm)) 
+acf(res)
+pacf(res)
+ar1 <- stats::ar(res, aic=F, order.max=1)
+print(ar1)
+cbind(rho=ar1$ar, var.pred=ar1$var.pred)
+cor(res[- length(res)], res[-1])
+ct <- cor.test(res[- length(res)], res[-1])
+cbind(rho=ct$estimate, low=ct$conf.int[1], up=ct$conf.int[2], pval=ct$p.value)
+```
+
+# Quadratic hockey stick SR model 
+
+```{r}
+# define quadratic hockey stick (Barrowman and Myers, 2000)
+
+qhs <- function(){
+  ## log-likelihood
+  logl <- function(a,b,delta,rec,ssb) {
+    res<-loglAR1(log(rec), log( ifelse(ssb <= b*(1-delta), 
+                                       a*ssb, 
+                                       ifelse( ssb < b*(1+delta), 
+                                               a*(ssb - ( ssb - b*(1-delta))^2/(4*delta*b)),
+                                               a*b))))
+    return(res)
+  }
+  ## initial parameter values
+  initial <- structure(function(rec, ssb){
+    return(FLPar(a = median(c(rec)/c(ssb), na.rm = TRUE),
+                 b = median(c(ssb), na.rm = TRUE),
+                 delta = 0.5))},
+  lower=c(-Inf, -Inf, 0),
+  upper=c(Inf, Inf, 1))
+  ## model to be fitted
+  model  <- rec ~ ifelse(ssb <= b*(1-delta), 
+                         a*ssb, 
+                         ifelse( ssb < b*(1+delta), 
+                                 a*(ssb - ( ssb - b*(1-delta))^2/(4*delta*b)),
+                                 a*b))
+  return(list(logl = logl, model = model, initial = initial))}
+
+
+sr.qhs <- FLSR(rec=rec, ssb=ssb)
+model(sr.qhs) <- "qhs"
+sr.qhs <- fmle(sr.qhs) # It's not using the bounds
+params(sr.qhs)
+sr.qhs <- fmle(sr.qhs, method="L-BFGS-B") # specify the method to use the bounds
+params(sr.qhs)
+summary(sr.qhs)
+plot(sr.qhs)
+```
+
+# Model comparison 
+
+AIC and BIC values: 
+
+```{r}
+# Overall model comparison using AIC and BIC
+
+ft <- data.frame(model=c("ricker","bevholt","segreg","segregBlim","geomean","rickerAR1","bevholtAR1","segregAR1"),
+           AIC=sapply(list(sr.rick, sr.bh, sr.hs, sr.hsblim, sr.gm, sr.rickAR1, sr.bhAR1, sr.hsAR1), AIC),
+           BIC=sapply(list(sr.rick, sr.bh, sr.hs, sr.hsblim, sr.gm, sr.rickAR1, sr.bhAR1, sr.hsAR1), BIC))
+ft <- flextable(ft)
+ft
+```
+
+Plot of fitted models: 
+
+```{r}
+pred.dat <- data.frame(ssb=seq(0, max(df$ssb), length.out=1000))
+
+pred.dat$ricker <- c(params(sr.rick)["a"]) * pred.dat$ssb * exp(-c(params(sr.rick)["b"])*pred.dat$ssb)
+pred.dat$bh <- c(params(sr.bh)["a"]) * pred.dat$ssb /( c(params(sr.bh)["b"]) + pred.dat$ssb)
+pred.dat$hs <- pmin( c(params(sr.hs)["a"]) * pred.dat$ssb, c(params(sr.hs)["a"]) * c(params(sr.hs)["b"]))
+pred.dat$hsblim <- pmin( c(params(sr.hsblim)["a"]) * pred.dat$ssb, c(params(sr.hsblim)["a"]) * Blim)
+
+tmp <- pivot_longer(pred.dat, cols=2:5)
+
+p <- ggplot(tmp, aes(ssb, value))+
+  geom_line(aes(col=name))+
+  geom_point(data=df, aes(ssb, rec))+
+  xlab("SSB")+
+  ylab("Recruits (age 0)")
+p
+```
+
+Coefficients: 
+
+```{r}
+ft <- data.frame(rick=c(params(sr.rick)), 
+           BH=c(params(sr.bh)),
+           HS=c(params(sr.hs)),
+           HSBlim=c(params(sr.hsblim)))
+ft <- flextable(ft)
+ft
+```
+
+# Changepoint analysis in Ricker residuals
+
+General analysis using `EnvCpt`:
+
+```{r}
+res <- c(residuals(sr.rick)) # log(rec(sr.rick)) - log(fitted(sr.rick))
+out <- envcpt(res)
+# model comparison by AIC and BIC
+AIC(out)
+sort(AIC(out))
+BIC(out)
+sort(BIC(out))
+
+# several plots
+plot(out,type='fit') # plots the fits
+plot(out,type="aic") # plots the aic values
+plot(out,type="bic") # plots the bic values
+
+```
+
+Analysis using `changepoint`:
+
+```{r}
+mod <- cpt.meanvar(res, method="PELT") # PELT is fast and exact
+plot(mod)
+param.est(mod)
+cpts(mod)
+
+mod.np <- cpt.np(res, method="PELT")
+plot(mod.np)
+cpts(mod.np)
+```
+```{r}
+mod <- processStream(res, cpmType = "GLR")  # detect mean and variance changes in Gaussian sequence
+mod$changePoints
+
+mod <- processStream(res, cpmType = "Mann-Whitney")  # detect location shifts (non-parametric)
+mod$changePoints
+
+mod <- processStream(res, cpmType = "Lepage")  # detect location and/or stream shifts (non-parametric)
+mod$changePoints
+
+```
+
+Using strucchange
+
+```{r}
+mod <-breakpoints(res ~ 1, breaks = 5) # max number of 5 breaks
+summary(mod)
+```
+
+# Save objects
+
+```{r}
+dir.create("results")
+save.image(file=file.path("results","res_1_classic_SR_FLR.RData"))
+```
+

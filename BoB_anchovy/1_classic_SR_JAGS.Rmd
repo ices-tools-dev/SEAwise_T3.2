@@ -1,0 +1,312 @@
+---
+title: "Classic SR models in JAGS"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# Load libraries 
+
+library(FLCore)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(flextable)
+
+library(rjags)
+library(loo)
+library(bayesplot)
+library(shinystan)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+```{r}
+# load object from WGHANSA 2022
+load(file.path("..","data","aneq.stk.RData")) # aneq.stk
+
+# remove 2023
+
+aneq.stk <- window(aneq.stk, end=2022)
+
+# recruitment (1st January)
+# change units
+
+rec <- rec(aneq.stk)
+rec <- rec*1e-6
+units(rec) <- "1e9"
+
+# ssb (from FLBiols because it is the same as used in FLBEIA)
+
+aneq.biol <- as(aneq.stk, "FLBiol")
+ssb <- ssb(aneq.biol)
+# equivalently, (i.e. without fishing mortality)
+# quantSums(stock.n(aneq.stk)*exp(-m(aneq.stk)*m.spwn(aneq.stk))*stock.wt(aneq.stk)*mat(aneq.stk))
+ssb <- ssb/1000
+units(ssb) <- "1000 t"
+
+# create data frame
+
+df <- data.frame(year=as.numeric(dimnames(aneq.stk)$year), 
+                 rec=as.numeric(rec), 
+                 ssb=as.numeric(ssb))
+
+# create log variables
+
+df <- df %>% 
+  mutate(logr=log(rec),
+         logssb=log(ssb),
+         rat=rec/ssb, 
+         lograt=log(rat))
+
+dat <- read.csv(file.path("..","data","env_data.csv"), sep=",")
+
+df <- left_join(df, dat)
+df <- subset(df, select=-c(date)) # remove the date column (which is a character)
+names(df)
+```
+
+# Fit Ricker SR model 
+
+```{r}
+# write data to a txt file
+
+dat <- list(
+  n=nrow(df), 
+  rec=df$rec, 
+  ssb=df$ssb, 
+  mu.logalpha=-1.7, psi.logalpha=1, 
+  mu.logbeta=-5, psi.logbeta=1,
+  a.psi=1, b.psi=0.07)
+
+# initial values
+
+#inits <- NULL  # this would be without fixing the seed
+inits <- list(.RNG.name = "base::Wichmann-Hill", .RNG.seed = 1234) # fixing the seed and the random number generator
+
+# list of parameters to be saved
+# to compute LOO and WAIC, we have to add the loglik per observation in the JAGS model and in the tracked parameters
+
+param0 <- c("logalpha","logbeta","alpha","beta","psi") # model parameters (without/with transformation)
+param <- c(param0, "loglik", "resid", "logrhat")
+
+# path for the JAGS model
+
+model.path <- file.path("..","jags_models","ricker_jags.txt")
+
+# MCMC specifications
+
+n.chains <- 3
+n.adapt <- 5000
+n.burnin <- 100000
+n.thin <- 100
+n.iter <- 500000 
+
+# model fit
+
+ptm.ini <- Sys.time()
+print(Sys.time())
+m <- jags.model(model.path, dat=dat, inits=inits, n.chains=n.chains, n.adapt=n.adapt)
+print(Sys.time())
+
+# burn-in
+
+print(Sys.time())
+update(m, n.iter=n.burnin)
+print(Sys.time())
+
+# coda object with MCMC
+
+run.mcmc <- coda.samples(m, variable.names=param, n.iter=n.iter, thin=n.thin)
+ptm.end <- Sys.time()
+ptm <- ptm.end - ptm.ini
+print(ptm)
+
+# compute DIC
+
+dic.mcmc <- dic.samples(m, variable.names=param, n.iter=n.iter, thin=n.thin)
+dic.mcmc
+
+# compute loo and waic
+
+loglik.mcmc <- as.matrix(run.mcmc[,grep("loglik", varnames(run.mcmc))])
+waic.value <- waic(loglik.mcmc)
+waic.value$estimates
+loo.value <- loo(loglik.mcmc)
+loo.value$estimates
+
+# summary statistics 
+
+summary(run.mcmc[, param0])
+
+# standard plot
+
+plot(run.mcmc[, param0])
+
+# diagnostics using library coda
+
+gelman.diag(run.mcmc[, param0])
+gelman.plot(run.mcmc[, param0])
+geweke.diag(run.mcmc[, param0])
+geweke.plot(run.mcmc[, param0])
+heidel.diag(run.mcmc[, param0])
+raftery.diag(run.mcmc[, param0])
+effectiveSize(run.mcmc[, param0])
+
+# plots using library coda
+
+autocorr.diag(run.mcmc[, param0])
+autocorr.plot(run.mcmc[, param0], ask=F)
+crosscorr.plot(run.mcmc[, param0], ask=F)
+crosscorr(run.mcmc[, param0])
+cumuplot(run.mcmc[, param0], ask=F)
+densplot(run.mcmc[, param0], ask=F)
+traceplot(run.mcmc[, param0], ask=F)
+
+# convert to matrix and then to data.frame to extract posterior values
+
+run.post <- as.data.frame(as.matrix(run.mcmc))
+
+# vector of quantiles to use to get the credible intervals and the estimates
+
+qvec <- c(0.05, 0.5, 0.95)
+
+# statistics of the prior distributions
+
+qnorm(qvec, dat$mu.logalpha, 1/sqrt(dat$psi.logalpha))
+qnorm(qvec, dat$mu.logbeta, 1/sqrt(dat$psi.logbeta))
+qgamma(qvec, dat$a.psi, dat$b.psi)
+
+# prior-posterior
+
+xmin <- min(qnorm(c(0.025, 0.975), dat$mu.logalpha, sqrt(1/dat$psi.logalpha)), run.post$logalpha)
+xmax <- max(qnorm(c(0.025, 0.975), dat$mu.logalpha, sqrt(1/dat$psi.logalpha)), run.post$logalpha)
+x <- seq(xmin, xmax, length=10000)
+y <- density(run.post$logalpha, bw=(xmax-xmin)/20)
+yprior <- dnorm(x, dat$mu.logalpha, sqrt(1/dat$psi.logalpha))
+ymin  <- min(y$y, yprior)
+ymax  <- max(y$y, yprior)
+plot(y, lwd=2, xlim=c(xmin, xmax), ylim=c(ymin, ymax), xlab="", ylab="", main=expression(ln(alpha)), yaxt="n", cex.main=2.5, cex.lab=1.5, cex.axis=1.5)
+lines(x, yprior, lty=2, lwd=2)
+
+xmin <- min(qnorm(c(0.025, 0.975), dat$mu.logbeta, sqrt(1/dat$psi.logbeta)), run.post$logbeta)
+xmax <- max(qnorm(c(0.025, 0.975), dat$mu.logbeta, sqrt(1/dat$psi.logbeta)), run.post$logbeta)
+x <- seq(xmin, xmax, length=10000)
+y <- density(run.post$logbeta, bw=(xmax-xmin)/20)
+yprior <- dnorm(x, dat$mu.logbeta, sqrt(1/dat$psi.logbeta))
+ymin  <- min(y$y, yprior)
+ymax  <- max(y$y, yprior)
+plot(y, lwd=2, xlim=c(xmin, xmax), ylim=c(ymin, ymax), xlab="", ylab="", main=expression(ln(beta)), yaxt="n", cex.main=2.5, cex.lab=1.5, cex.axis=1.5)
+lines(x, yprior, lty=2, lwd=2)
+
+xmin <- min(qgamma(c(0.025, 0.975), dat$a.psi, dat$b.psi), run.post$psi)
+xmax <- max(qgamma(c(0.025, 0.975), dat$a.psi, dat$b.psi), run.post$psi)
+x <- seq(xmin, xmax, length=10000)
+y <- density(run.post$psi, bw=(xmax-xmin)/20)
+yprior <- dgamma(x, dat$a.psi, dat$b.psi)
+ymin  <- min(y$y, yprior)
+ymax  <- max(y$y, yprior)
+ymin <- 0
+plot(y, lwd=2, xlim=c(xmin, xmax), ylim=c(ymin, ymax), xlab="", ylab="", main=expression(psi), yaxt="n", cex.main=2.5, cex.lab=1.5, cex.axis=1.5)
+lines(x, yprior, lwd=2, lty=2)
+
+# residuals
+
+tmp <- run.post[, paste0("resid[",1:length(df$rec),"]")]
+boxplot(tmp)
+abline(h=0, col=2)
+
+# additional plots using library bayesplot
+# see also: https://mc-stan.org/bayesplot/articles/visual-mcmc-diagnostics.html
+
+# mcmc_trace(run.mcmc)
+# mcmc_dens(run.mcmc)
+
+# additional plots using library shinystan
+# launch_shinystan(as.shinystan(run.mcmc))
+
+# predicted recruitment series 
+
+tmp <- run.post[,paste0("logrhat[",1:nrow(df),"]")]
+tmp <- gather(tmp) %>% 
+  mutate(key=ordered(key, levels=paste0("logrhat[",1:nrow(df),"]"))) %>% 
+  group_by(key) %>% 
+  summarize(med = quantile(exp(value), probs = 0.50),
+          low = quantile(exp(value), probs = 0.05),
+          up = quantile(exp(value), probs = 0.95)) %>% 
+  mutate(year=df$year)
+
+p <- ggplot(tmp, aes(year, med))+
+  geom_ribbon(aes(ymin=low, ymax=up), fill="grey", alpha=0.5)+
+  geom_line(col=1)+
+  geom_point(data=df, aes(x=year, y=rec))+
+  xlab("")+
+  ylab("Recruits (age 0)")+
+  expand_limits(y=0)
+p
+
+# predicted log recruitment series 
+
+tmp <- run.post[,paste0("logrhat[",1:nrow(df),"]")]
+tmp <- gather(tmp) %>% 
+  mutate(key=ordered(key, levels=paste0("logrhat[",1:nrow(df),"]"))) %>% 
+  group_by(key) %>% 
+  summarize(med = quantile(value, probs = 0.50),
+          low = quantile(value, probs = 0.05),
+          up = quantile(value, probs = 0.95)) %>% 
+  mutate(year=df$year)
+
+p <- ggplot(tmp, aes(year, med))+
+  geom_ribbon(aes(ymin=low, ymax=up), fill="grey", alpha=0.5)+
+  geom_line(col=1)+
+  geom_point(data=df, aes(x=year, y=logr))+
+  xlab("")+
+  ylab("Log Recruits (age 0)")+
+  expand_limits(y=0)
+p
+
+# predicted SR model
+
+pred.dat <- data.frame(ssb=seq(0, max(df$ssb), length=1000))
+
+out <- NULL
+for (i in 1:nrow(pred.dat)){
+  tmp <- exp(run.post$logalpha) * pred.dat$ssb[i] * exp(-exp(run.post$logbeta) * pred.dat$ssb[i])
+  out <- rbind(out, quantile(tmp, c(0.05, 0.5, 0.95))) 
+}
+out <- as.data.frame(out)
+out <- cbind(pred.dat$ssb, out)
+names(out) <- c("ssb","low","med","up")
+
+p <- ggplot(out, aes(x=ssb, y=med))+
+  geom_ribbon(aes(ymin=low, ymax=up), fill="grey", alpha=0.5)+
+  geom_line(lwd=1)+
+  geom_point(data=df, aes(x=ssb, y=rec))+
+  xlab("SSB")+
+  ylab("Recruits (age 0)")+
+  expand_limits(x=0, y=0)
+p
+
+# give specific name
+
+run.mcmc.rick <- run.mcmc
+dic.rick <- dic.mcmc
+loglik.rick <-loglik.mcmc
+waic.rick <- waic.value
+loo.rick <- loo.value
+```
+

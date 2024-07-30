@@ -1,0 +1,278 @@
+---
+title: "Surrogates of environmental covariates for anchovy in subarea 8"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readxl)
+
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+We read the whole time series available (not only data from 1987 used for the model fit). 
+
+
+```{r}
+
+# ui: yearly from 1948 to 2021
+
+ui <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="UI")
+
+ui <- ui %>% 
+  rename(year=AÑO) %>% 
+  mutate(month=1, date=as.Date(paste0(year, "-01-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>%  
+  select(year, date, UI)
+
+
+# turb: monthly from 1948/01 to 2021/12
+
+turb <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="TURB")
+
+turb <- turb %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, TURB)
+
+# compute turbulence per year
+
+turb <- turb %>%
+  group_by(year) %>% 
+  summarise(TURB.mean=mean(TURB, na.rm=T),
+            TURB.min=min(TURB, na.rm=T),
+            TURB.max=max(TURB, na.rm=T),
+            TURB.sd=sqrt(var(TURB, na.rm=T)),
+            TURB.q1=mean(TURB[quarter==1], na.rm=T),
+            TURB.q2=mean(TURB[quarter==2], na.rm=T),
+            TURB.q3=mean(TURB[quarter==3], na.rm=T),
+            TURB.q4=mean(TURB[quarter==4], na.rm=T),
+            TURB.s1=mean(TURB[semester==1], na.rm=T),
+            TURB.s2=mean(TURB[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+
+# merge two datasets (ui and turb)
+
+df <- merge(ui, turb, by=c("year"))
+df <- df %>% 
+  mutate(logUI=log(UI),
+         logTURB.q3=log(TURB.q3))
+names(df)
+
+```
+# Upwelling index
+
+Decomposition of log(UI):
+
+```{r}
+# plot logUI
+ggplot(df, aes(year, logUI))+
+  geom_point()+
+  geom_line()+
+  geom_smooth(method="lm", col="grey")
+
+
+# linear model
+m.lm <- lm(logUI ~ year, data=df)
+summary(m.lm)
+
+# check with the spectrum analysis some tentaive values for the periodic term
+
+aux <- spectrum(df$logUI, log="no", plot=TRUE)
+1/aux$freq[which.max(aux$spec)] # approximately at 18.75 years
+
+# models accounting for linear trend and periodic shape 
+# which period gives the best fit?
+
+pvector <- c(5:40)
+mod.list <- vector("list", length=length(pvector))
+r2vector <- NULL
+for (i in 1:length(pvector)){
+  p <- pvector[i]
+  mod <- lm(logUI ~ sin(2*pi*year/p) + cos(2*pi*year/p) + year, data=df) 
+  # print(summary(mod))
+  mod.list[[i]] <- mod
+  r2vector <- c(r2vector, summary(mod)$adj.r.squared)
+}
+
+# plot all fitted models
+
+par(mfrow=c(6,6), mar=c(2,2,2,0))
+for (i in 1:length(pvector)){
+  plot(df$year, df$logUI, type="l", lty=1, main=paste("Period", pvector[i]))
+  lines(df$year, predict(mod.list[[i]]), lty=2, col=2)
+}
+par(mfrow=c(1,1), mar=c(5, 4, 4, 2) + 0.1) # back to default
+
+# find the model with larger R2
+
+plot(pvector, r2vector, type="b")
+
+# the model with larger R2:
+
+idx <- which.max(r2vector)
+data.frame(pvector, r2vector)[idx,]
+
+# see the fitted model in detail
+
+pvector[idx]
+summary(mod.list[[idx]])
+
+# we could even remove one term more (non significant) in the model
+
+p <- pvector[idx]
+mod <- lm(logUI ~ sin(2*pi*year/p) + year, data=df) 
+summary(mod)
+
+plot(df$year, df$logUI, xlab="", ylab="log(UI)", type="o")
+lines(df$year, predict(mod.list[[idx]]), col=2)
+lines(df$year, predict(mod), col=3)
+
+plot(resid(mod), xlab="", ylab="Residuals")
+abline(h=0)
+
+acf(resid(mod))
+arima(resid(mod), c(1,0,0), include.mean=F)
+
+
+```
+
+Prediction
+
+```{r}
+set.seed(333) # set the seed
+
+pred.ui <- data.frame(year=2022:2099)
+pred.ui$UI <- rlnorm(nrow(pred.ui),
+                     predict(mod, newdata=pred.ui), 
+                     sd=summary(mod)$sigma)
+
+plot(df$year, log(df$UI), type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="logUI", ylim=range(c(log(df$UI), log(pred.ui$UI)), na.rm=T))
+lines(pred.ui$year, log(pred.ui$UI), type="o", pch=19, col=2)
+
+plot(df$year, df$UI, type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="UI", ylim=c(0, max(df$UI, pred.ui$UI)))
+lines(pred.ui$year, pred.ui$UI, type="o", pch=19, col=2)
+```
+
+# Turbulence
+
+Decomposition of log(TURB.q3):
+
+```{r}
+# plot logUI
+ggplot(df, aes(year, logTURB.q3))+
+  geom_point()+
+  geom_line()+
+  geom_smooth(method="lm", col="grey")
+
+
+# linear model
+m.lm <- lm(logTURB.q3 ~ year, data=df)
+summary(m.lm)
+
+# check with the spectrum analysis some tentaive values for the periodic term
+
+aux <- spectrum(df$logTURB.q3, log="no", plot=TRUE)
+1/aux$freq[which.max(aux$spec)] # approximately at 37 years
+
+# models accounting for linear trend and periodic shape 
+# which period gives the best fit?
+
+pvector <- c(5:40)
+mod.list <- vector("list", length=length(pvector))
+r2vector <- NULL
+for (i in 1:length(pvector)){
+  p <- pvector[i]
+  mod <- lm(logTURB.q3 ~ sin(2*pi*year/p) + cos(2*pi*year/p) + year, data=df) 
+  # print(summary(mod))
+  mod.list[[i]] <- mod
+  r2vector <- c(r2vector, summary(mod)$adj.r.squared)
+}
+
+# plot all fitted models
+
+par(mfrow=c(6,6), mar=c(2,2,2,0))
+for (i in 1:length(pvector)){
+  plot(df$year, df$logTURB.q3, type="l", lty=1, main=paste("Period", pvector[i]))
+  lines(df$year, predict(mod.list[[i]]), lty=2, col=2)
+}
+par(mfrow=c(1,1), mar=c(5, 4, 4, 2) + 0.1) # back to default
+
+# find the model with larger R2
+
+plot(pvector, r2vector, type="b")
+
+# the model with larger R2: 
+
+idx <- which.max(r2vector)
+data.frame(pvector, r2vector)[idx,]
+
+# see the fitted model in detail
+
+pvector[idx]
+summary(mod.list[[idx]])
+
+# we could even remove one term more (non significant) in the model
+# we keep the linear term although is not significant
+
+p <- pvector[idx]
+mod <- lm(logTURB.q3 ~ cos(2*pi*year/p) + year, data=df) 
+summary(mod)
+
+plot(df$year, df$logTURB.q3, xlab="", ylab="log(TURB.q3)", type="o")
+lines(df$year, predict(mod.list[[idx]]), col=2)
+lines(df$year, predict(mod), col=3)
+
+plot(resid(mod), xlab="", ylab="Residuals")
+abline(h=0)
+
+acf(resid(mod))
+arima(resid(mod), c(1,0,0), include.mean=F)
+
+
+```
+
+Prediction
+
+```{r}
+set.seed(555) # set the seed
+
+pred.turb <- data.frame(year=2022:2099)
+pred.turb$TURB.q3 <- rlnorm(nrow(pred.turb),
+                     predict(mod, newdata=pred.turb), 
+                     sd=summary(mod)$sigma)
+
+plot(df$year, log(df$TURB.q3), type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="logTURB.q3", ylim=range(c(log(df$TURB.q3), log(pred.turb$TURB.q3)), na.rm=T))
+lines(pred.turb$year, log(pred.turb$TURB.q3), type="o", pch=19, col=2)
+
+plot(df$year, df$TURB.q3, type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="TURB.q3", ylim=c(0, max(df$TURB.q3, pred.turb$TURB.q3)))
+lines(pred.turb$year, pred.turb$TURB.q3, type="o", pch=19, col=2)
+```
+
+# Save dataset
+
+```{r}
+pred <- merge(pred.ui, pred.turb, by="year")
+saveRDS(pred, file="results/ui_turb_projection.RDS")
+```
+

@@ -1,0 +1,398 @@
+---
+title: "Plots of SR models with environmental covariates for anchovy in subarea 8 (1987-2021)"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# load libraries
+library(FLCore)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+library(ggforce) # for convex hull
+library(mgcv)
+
+library(metR)
+library(concaveman)
+library(ggpubr)
+
+library(sf)
+library(sfheaders)
+# library(sp)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+Data preparation: 
+
+```{r}
+# load object from WGHANSA 2022
+load(file.path("..","data","aneq.stk.RData")) # aneq.stk
+
+# remove 2023
+
+aneq.stk <- window(aneq.stk, end=2022)
+
+# recruitment (1st January)
+# change units
+
+rec <- rec(aneq.stk)
+rec <- rec*1e-6
+units(rec) <- "1e9"
+
+# ssb (from FLBiols because it is the same as used in FLBEIA)
+
+aneq.biol <- as(aneq.stk, "FLBiol")
+ssb <- ssb(aneq.biol)
+# equivalently, (i.e. without fishing mortality)
+# quantSums(stock.n(aneq.stk)*exp(-m(aneq.stk)*m.spwn(aneq.stk))*stock.wt(aneq.stk)*mat(aneq.stk))
+ssb <- ssb/1000
+units(ssb) <- "1000 t"
+
+# create data frame
+
+df <- data.frame(year=as.numeric(dimnames(aneq.stk)$year), 
+                 rec=as.numeric(rec), 
+                 ssb=as.numeric(ssb))
+
+# create log variables
+
+df <- df %>% 
+  mutate(logr=log(rec),
+         logssb=log(ssb),
+         rat=rec/ssb, 
+         lograt=log(rat))
+
+dat <- read.csv(file.path("..","data","env_data.csv"), sep=",")
+
+df <- left_join(df, dat)
+df <- subset(df, select=-c(date)) # remove the date column (which is a character)
+names(df)
+range(df$year)
+head(df)
+tail(df)
+```
+Correlation between UI and TURB.q3: 
+
+```{r}
+cor(df$UI, df$TURB.q3, use="complete.obs")
+cor.test(df$UI, df$TURB.q3, use="complete.obs")
+cor(df$UI, df$TURB.q3, method="spearman", use="complete.obs")
+cor.test(df$UI, df$TURB.q3, method="spearman", use="complete.obs")
+
+summary(lm(TURB.q3~UI, data=df))
+```
+
+```{r}
+ggplot(df, aes(UI, TURB.q3))+
+  geom_point()+
+  geom_smooth(method="lm", col=2, fill=2)+
+  geom_smooth(col=3, fill=3)
+
+ggplot(df, aes(UI, TURB.q3))+
+  geom_point()+
+  stat_ellipse(geom="polygon", col=1, 
+                      alpha = 0.2,
+                      show.legend = FALSE, 
+                      level = 0.95)
+```
+
+# Basic Ricker + environmental covariates
+
+## Models
+
+```{r}
+
+# given that there are no environmental data in 2022, the reference model is until 2021
+mm10 <- gam(logr ~ offset(logssb) + ssb + UI + s(TURB.q3), data=subset(df, year<2022))
+summary(mm10)
+
+# Ricker without environmental variables
+m0 <- gam(logr ~ offset(logssb) + ssb, data=subset(df, year<2022))
+summary(m0)
+
+# data
+summary(df$UI)
+summary(df$TURB.q3)
+summary(df$ssb)
+```
+
+## Predictive plots: Turbulence 
+
+```{r}
+
+pred.dat <- expand.grid(UI=seq(100, 2000, by=300), TURB.q3=seq(100, 600, by=100), ssb=seq(10, 2500, by=10))
+pred.dat$logssb <- log(pred.dat$ssb)
+pred.dat$logr <- predict(mm10, newdata=pred.dat)
+pred.dat$rec <- exp(pred.dat$logr)
+pred.dat$rec.ref <- exp(predict(m0, newdata=pred.dat))
+
+ggplot(pred.dat, aes(ssb, rec, group=TURB.q3, col=TURB.q3))+
+  geom_line()+
+  facet_wrap(~UI)+
+  geom_line(data=pred.dat, aes(ssb, rec.ref), col=2)
+
+
+pred.dat <- expand.grid(UI=mean(df$UI, na.rm=T), TURB.q3=seq(100, 600, by=100), ssb=seq(10, 2500, by=10))
+pred.dat$logssb <- log(pred.dat$ssb)
+pred.dat$logr <- predict(mm10, newdata=pred.dat)
+pred.dat$rec <- exp(pred.dat$logr)
+pred.dat$rec.ref <- exp(predict(m0, newdata=pred.dat))
+
+ggplot(pred.dat, aes(ssb, rec, group=TURB.q3, col=TURB.q3))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec))+
+  geom_line(data=pred.dat, aes(ssb, rec.ref), col=2)
+```
+
+## Predictive plots: Upwelling 
+
+```{r}
+pred.dat <- expand.grid(UI=seq(100, 2000, by=300), TURB.q3=seq(100, 600, by=100), ssb=seq(10, 2500, by=10))
+pred.dat$logssb <- log(pred.dat$ssb)
+pred.dat$logr <- predict(mm10, newdata=pred.dat)
+pred.dat$rec <- exp(pred.dat$logr)
+pred.dat$rec.ref <- exp(predict(m0, newdata=pred.dat))
+
+ggplot(pred.dat, aes(ssb, rec, group=UI, col=UI))+
+  geom_line()+
+  facet_wrap(~TURB.q3)+
+  geom_line(data=pred.dat, aes(ssb, rec.ref), col=2)
+
+pred.dat <- expand.grid(UI=seq(100, 2000, by=300), TURB.q3=mean(df$TURB.q3, na.rm=T), ssb=seq(10, 2500, by=10))
+pred.dat$logssb <- log(pred.dat$ssb)
+pred.dat$logr <- predict(mm10, newdata=pred.dat)
+pred.dat$rec <- exp(pred.dat$logr)
+pred.dat$rec.ref <- exp(predict(m0, newdata=pred.dat))
+
+ggplot(pred.dat, aes(ssb, rec, group=UI, col=UI))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec))+
+  geom_line(data=pred.dat, aes(ssb, rec.ref), col=2)
+```
+
+# Joint effects
+
+We fixed SSB at the value at which more or less the maximum is attained (SSB=500). And we look at combinations of turbulence and upwelling that lead to high Recruitment values.
+
+```{r}
+pred.dat <- expand.grid(UI=seq(100, 2000, by=300), TURB.q3=seq(100, 600, by=100), ssb=500)
+pred.dat$logssb <- log(pred.dat$ssb)
+pred.dat$logr <- predict(mm10, newdata=pred.dat)
+pred.dat$rec <- exp(pred.dat$logr)
+pred.dat$rec.ref <- exp(predict(m0, newdata=pred.dat))
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec, fill=rec))+
+  geom_tile()+
+  scale_fill_viridis_c()+
+  geom_contour(col=2)+
+  geom_point(data=df, aes(UI, TURB.q3), col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec, fill=rec))+
+  geom_contour(aes(colour = stat(level))) +
+  metR::geom_text_contour(aes(z = rec), stroke = 0.15)+
+  geom_point(data=df, aes(UI, TURB.q3), col=2) 
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  metR::geom_text_contour(stroke = 0.15)+
+  geom_point(data=df, aes(UI, TURB.q3), col=2)
+```
+
+```{r}
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_ellipse(data=df, aes(UI, TURB.q3), expand=0, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_rect(data=df, aes(UI, TURB.q3), expand=0, col=2)
+```
+
+## Option 1
+
+Using the function chull (without margin)
+
+```{r}
+hull <- df %>% 
+  select(UI, TURB.q3) %>% 
+  na.omit() %>% 
+  slice(chull(UI, TURB.q3))
+data.frame(hull)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=2, fill=NA, inherit.aes = F)
+```
+
+## Option 2
+
+Using geom_mark_hull and the function concaveman (without margin):
+
+```{r}
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=1, expand=0, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=2, expand=0, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=3, expand=0, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=3, expand=0, radius=0, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=3, expand=0.05, col=2)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_mark_hull(data=df, aes(UI, TURB.q3), concavity=10, expand=0.05, col=2)
+
+hull2 <- concaveman(points=as.matrix(na.omit(data.frame(df$UI, df$TURB.q3))), concavity=3)
+hull2 <- as.data.frame(hull2)
+names(hull2) <- c("UI","TURB.q3")
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull2, aes(UI, TURB.q3), col=2, fill=NA, inherit.aes = F)
+
+```
+
+## Option 3
+
+Using stat_chull from ggpubr (without margin)
+
+```{r}
+p <- ggscatter(data=df, x="UI", y="TURB.q3")+
+  stat_chull(alpha = 0.1, geom = "polygon")
+print(p)
+
+hull3 <- ggplot_build(p)$data[[2]] # extract data from ggplot
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull3, aes(x, y), col=2, fill=NA, inherit.aes = F)
+
+```
+
+## Option 4
+
+Using package sf for spatial analysis
+
+```{r}
+points.sf <- st_as_sf(na.omit(subset(df, select=c("UI","TURB.q3"))), coords=c("UI","TURB.q3"))
+
+hull4 <- st_convex_hull(st_union(points.sf)) # without buffer
+hull5 <- st_buffer(hull4, dist=50) # with buffer
+
+hull4 <- as.data.frame(st_coordinates(hull4)[,1:2]) # extract coordinates
+hull5 <- as.data.frame(st_coordinates(hull5)[,1:2])
+names(hull4) <- names(hull5) <- c("UI","TURB.q3")
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull4, aes(UI, TURB.q3), inherit.aes=F, col=2, fill=NA)+
+  geom_polygon(data=hull5, aes(UI, TURB.q3), inherit.aes=F, col=3, fill=NA)
+
+```
+
+## comparison of hulls
+
+```{r}
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), inherit.aes=F, col=2, fill=NA)+
+  geom_polygon(data=hull2, aes(UI, TURB.q3), inherit.aes=F, col=3, fill=NA)+
+  geom_polygon(data=hull3, aes(x, y), inherit.aes=F, col=4, fill=NA)+
+  geom_polygon(data=hull4, aes(UI, TURB.q3), inherit.aes=F, col=5, fill=NA)+
+  geom_polygon(data=hull5, aes(UI, TURB.q3), inherit.aes=F, col=6, fill=NA)
+```
+
+## Check if points are within the polygon limits using sf
+
+```{r}
+k <- 20
+test <- data.frame(UI=runif(k, min(df$UI, na.rm=T), max(df$UI, na.rm=T)),
+                   TURB.q3=runif(k, min(df$TURB.q3, na.rm=T), max(df$TURB.q3, na.rm=T)))
+
+# using the package sp
+# kk <- sp::point.in.polygon(test$UI, test$TURB.q3, hull$UI, hull$TURB.q3)
+
+# using the package sf
+
+test.sf <- st_as_sf(test, coords=c("UI","TURB.q3"))
+
+hull.sf <- sfheaders::sf_polygon(obj = hull)
+sel <- st_within(test.sf, hull.sf, sparse=F)
+# alternatively 
+# sel <- st_intersects(test.sf, hull4, sparse=FALSE)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=2, fill=NA, inherit.aes = F)+
+  geom_point(data=test, aes(UI, TURB.q3), pch=3, col="white", inherit.aes = F)+
+  geom_point(data=test[sel,], aes(UI, TURB.q3), pch=3, col=2, inherit.aes = F)
+  
+hull5.sf <- sfheaders::sf_polygon(obj = hull5)
+sel5 <- st_within(test.sf, hull5.sf, sparse=F)
+
+ggplot(pred.dat, aes(UI, TURB.q3, z=rec))+
+  metR::geom_contour_fill() +
+  geom_contour(colour = "black") +
+  geom_point(data=df, aes(UI, TURB.q3), col=2)+
+  geom_polygon(data=hull5, aes(UI, TURB.q3), col=2, fill=NA, inherit.aes = F)+
+  geom_point(data=test, aes(UI, TURB.q3), pch=3, col="white", inherit.aes = F)+
+  geom_point(data=test[sel5,], aes(UI, TURB.q3), pch=3, col=2, inherit.aes = F)
+
+```

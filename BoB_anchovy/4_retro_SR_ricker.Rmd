@@ -1,0 +1,584 @@
+---
+title: "Retrospective SR Ricker model for anchovy in subarea 8"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# load libraries
+library(FLCore)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+```{r}
+# load object from WGHANSA 2022
+load(file.path("..","data","aneq.stk.RData")) # aneq.stk
+
+# remove 2023
+
+aneq.stk <- window(aneq.stk, end=2022)
+
+# recruitment (1st January)
+# change units
+
+rec <- rec(aneq.stk)
+rec <- rec*1e-6
+units(rec) <- "1e9"
+
+# ssb (from FLBiols because it is the same as used in FLBEIA)
+
+aneq.biol <- as(aneq.stk, "FLBiol")
+ssb <- ssb(aneq.biol)
+# equivalently, (i.e. without fishing mortality)
+# quantSums(stock.n(aneq.stk)*exp(-m(aneq.stk)*m.spwn(aneq.stk))*stock.wt(aneq.stk)*mat(aneq.stk))
+ssb <- ssb/1000
+units(ssb) <- "1000 t"
+
+# create data frame
+
+df <- data.frame(year=as.numeric(dimnames(aneq.stk)$year), 
+                 rec=as.numeric(rec), 
+                 ssb=as.numeric(ssb))
+
+# create log variables
+
+df <- df %>% 
+  mutate(logr=log(rec),
+         logssb=log(ssb),
+         rat=rec/ssb, 
+         lograt=log(rat))
+
+dat <- read.csv(file.path("..","data","env_data.csv"), sep=",")
+
+df <- left_join(df, dat)
+df <- subset(df, select=-c(date)) # remove the date column (which is a character)
+names(df)
+```
+
+# Hindcast for Ricker using FLSR
+
+Ricker SR model to the whole time series using FLSR
+
+```{r}
+sr.rick <- FLSR(rec=rec, ssb=ssb)
+model(sr.rick) <- "ricker"
+sr.rick <- fmle(sr.rick)
+summary(sr.rick)
+plot(sr.rick)
+```
+
+## Remove years sequentially
+
+Check how stable is the Ricker model when removing years sequentially:
+
+```{r, echo=F, results=F}
+
+# maximum number of years
+k <- min(floor(nrow(df)/2), 15)
+
+# last year
+
+yr.last <- range(sr.rick)["maxyear"]
+
+# initialise
+
+out.retro <- NULL
+
+# loop
+for (i in 0:k){
+  sr.aux <- window(sr.rick, end=yr.last-i)
+  sr.aux <- fmle(sr.aux)
+  out.retro <- rbind(out.retro,
+             c( i, yr.last-i, sr.aux@details$convergence, 
+                c(params(sr.aux)), 
+                vcov(sr.aux)[1,1,1], vcov(sr.aux)[2,2,1],
+                sd(residuals(sr.aux)))) 
+}
+out.retro <- as.data.frame(out.retro)
+names(out.retro) <- c("i","maxyear","convergence","a","b","a.var","b.var","sigma")
+```
+
+Quick check for convergence:
+
+```{r}
+all(out.retro$convergence==0)
+```
+
+Plots:
+
+```{r, echo=F}
+p <- ggplot(out.retro, aes(maxyear, a))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=a-2*sqrt(a.var), ymax=a+2*sqrt(a.var)), fill="grey", alpha=0.3)+
+  # geom_hline(yintercept =0, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro, aes(maxyear, b))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)), fill="grey", alpha=0.3)+
+  geom_hline(yintercept =0, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro, aes(maxyear, sigma))+
+  geom_line()+
+  geom_point()+
+  # geom_hline(yintercept =0, lty=2)+
+  ylab(expression(sigma))+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro, aes(a, b))+
+  # geom_line()+
+  geom_point()+
+  geom_errorbar(aes(xmin=a-2*sqrt(a.var), xmax=a+2*sqrt(a.var),
+                   ymin=b, ymax=b))+
+  geom_errorbar(aes(xmin=a, xmax=a,
+                   ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)))
+  
+```
+
+All models: 
+```{r}
+aux <- data.frame(ssb=seq(0, max(df$ssb), length=1000))
+for (i in 1:nrow(out.retro)){
+  aux <- cbind(aux, out.retro$a[i]*aux$ssb * exp(-out.retro$b[i]*aux$ssb))
+}
+aux <- as.data.frame(aux)
+names(aux) <- c("ssb", paste0("m",out.retro$i))
+aux2 <- pivot_longer(aux, cols=starts_with("m"))
+aux2$name <- factor(aux2$name, levels=paste0("m",out.retro$i), ordered=T)
+
+ggplot(aux2, aes(ssb, value, col=name))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec), inherit.aes=F)+
+  ylab("R")+xlab("SSB")
+
+```
+
+## Remove 1 year 
+
+Check how stable is the Ricker model to one year removal:
+
+```{r, echo=F, results=F}
+
+# years
+yrs <- seq(range(sr.rick)["minyear"],range(sr.rick)["maxyear"])
+
+# initialise
+
+out.1out <- NULL
+
+# loop
+for (i in 1:length(yrs)){
+  sr.aux <- FLSR(rec=rec[,-i], ssb=ssb[,-i])
+  model(sr.aux) <- "ricker"
+  sr.aux <- fmle(sr.aux)
+  out.1out <- rbind(out.1out,
+             c( i, yr.last-i, sr.aux@details$convergence, 
+                c(params(sr.aux)), 
+                vcov(sr.aux)[1,1,1], vcov(sr.aux)[2,2,1], 
+                sd(residuals(sr.aux)))) 
+}
+out.1out <- as.data.frame(out.1out)
+names(out.1out) <- c("i","maxyear","convergence","a","b","a.var","b.var","sigma")
+```
+
+Quick check for convergence:
+
+```{r}
+all(out.1out$convergence==0)
+```
+
+Plots:
+
+```{r, echo=F}
+p <- ggplot(out.1out, aes(maxyear, a))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=a-2*sqrt(a.var), ymax=a+2*sqrt(a.var)), fill="grey", alpha=0.3)+
+  # geom_hline(yintercept =0, lty=2)+
+  xlab("Removed year")
+p
+
+p <- ggplot(out.1out, aes(maxyear, b))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)), fill="grey", alpha=0.3)+
+  geom_hline(yintercept =0, lty=2)+
+  xlab("Removed year")
+p
+
+p <- ggplot(out.1out, aes(maxyear, sigma))+
+  geom_line()+
+  geom_point()+
+  # geom_hline(yintercept =0, lty=2)+
+  ylab(expression(sigma))+
+  xlab("Removed year")
+p
+
+p <- ggplot(out.1out, aes(a, b))+
+  # geom_line()+
+  geom_point()+
+  geom_errorbar(aes(xmin=a-2*sqrt(a.var), xmax=a+2*sqrt(a.var),
+                   ymin=b, ymax=b))+
+  geom_errorbar(aes(xmin=a, xmax=a,
+                   ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)))
+  
+```
+
+All models: 
+```{r}
+aux <- data.frame(ssb=seq(0, max(df$ssb), length=1000))
+for (i in 1:nrow(out.1out)){
+  aux <- cbind(aux, out.1out$a[i]*aux$ssb * exp(-out.1out$b[i]*aux$ssb))
+}
+aux <- as.data.frame(aux)
+names(aux) <- c("ssb", paste0("m",out.1out$i))
+aux2 <- pivot_longer(aux, cols=starts_with("m"))
+aux2$name <- factor(aux2$name, levels=paste0("m",out.1out$i), ordered=T)
+
+ggplot(aux2, aes(ssb, value, col=name))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec), inherit.aes=F)+
+  ylab("R")+xlab("SSB")
+
+```
+
+# Basic Ricker fitted as lm
+
+```{r}
+# all years:
+m0.2022 <- lm(logr ~ offset(logssb) + ssb, data=df)
+coef(m0.2022)
+
+# given that there are no environmental data in 2022, the reference model is until 2021
+m0 <- lm(logr ~ offset(logssb) + ssb, data=subset(df, year<2022)) 
+# equivalently: 
+# m0bis <- lm(lograt ~ ssb, data=df)
+
+coef(m0)
+summary(m0)
+anova(m0)
+confint(m0, level=0.95)
+
+par(mfrow=c(2,2))
+plot(m0)
+
+```
+
+## Remove years sequentially
+
+Check how stable is the Ricker model when removing years sequentially:
+
+```{r, echo=F, results=F}
+
+# maximum number of years
+k <- min(floor(nrow(df)/2), 15)
+
+# last year
+
+yr.last <- range(sr.rick)["maxyear"]
+
+# initialise
+
+out.retro.lm <- NULL
+
+# loop
+for (i in 0:k){
+  aux <- lm(logr ~ offset(logssb) + ssb, data=subset(df, year<=yr.last-i))
+  out.retro.lm <- rbind(out.retro.lm,
+             c( i, yr.last-i, coef(aux)[1], exp(coef(aux)[1]), -coef(aux)[2],
+                summary(aux)$coef[,2]^2, summary(aux)$coef[,4], 
+                summary(aux)$sigma, summary(aux)$adj.r.squared))
+}
+out.retro.lm <- as.data.frame(out.retro.lm)
+names(out.retro.lm) <- c("i","maxyear","loga","a","b",
+                         "loga.var","b.var","a.pval", "b.pval","sigma","adj.rsq")
+
+```
+
+Plots:
+
+```{r, echo=F}
+p <- ggplot(out.retro.lm, aes(maxyear, loga))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=loga-2*sqrt(loga.var), ymax=loga+2*sqrt(loga.var)), fill="grey", alpha=0.3)+
+  # geom_hline(yintercept =0, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, b))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)), fill="grey", alpha=0.3)+
+  geom_hline(yintercept =0, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, sigma))+
+  geom_line()+
+  geom_point()+
+  ylab(expression(sigma))+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, b.pval))+
+  geom_line()+
+  geom_point()+
+  geom_hline(yintercept=0.05, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, adj.rsq))+
+  geom_line()+
+  geom_point()+
+  ylab(expression(R^2))+
+  xlab("Last year")
+p
+
+# p <- ggplot(out.retro.lm, aes(a, b))+
+#   # geom_line()+
+#   geom_point()+
+#   geom_errorbar(aes(xmin=a-2*sqrt(a.var), xmax=a+2*sqrt(a.var),
+#                    ymin=b, ymax=b))+
+#   geom_errorbar(aes(xmin=a, xmax=a,
+#                    ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)))
+  
+```
+
+All models: 
+```{r}
+aux <- data.frame(ssb=seq(0, max(df$ssb), length=1000))
+for (i in 1:nrow(out.retro.lm)){
+  aux <- cbind(aux, out.retro.lm$a[i]*aux$ssb * exp(-out.retro.lm$b[i]*aux$ssb))
+}
+aux <- as.data.frame(aux)
+names(aux) <- c("ssb", paste0("m",out.retro.lm$i))
+aux2 <- pivot_longer(aux, cols=starts_with("m"))
+aux2$name <- factor(aux2$name, levels=paste0("m",out.retro.lm$i), ordered=T)
+
+ggplot(aux2, aes(ssb, value, col=name))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec), inherit.aes=F)+
+  ylab("R")+xlab("SSB")
+
+```
+
+## Remove 1 year 
+
+Check how stable is the Ricker model to one year removal:
+
+```{r, echo=F, results=F}
+
+# years
+yrs <- seq(range(sr.rick)["minyear"],range(sr.rick)["maxyear"])
+
+# initialise
+
+out.1out.lm <- NULL
+
+# loop
+for (i in 1:length(yrs)){
+  aux <- lm(logr ~ offset(logssb) + ssb, data=df[-i,])
+  out.1out.lm <- rbind(out.1out.lm,
+             c( i, yr.last-i, coef(aux)[1], exp(coef(aux)[1]), -coef(aux)[2],
+                summary(aux)$coef[,2]^2, summary(aux)$coef[,4], 
+                summary(aux)$sigma, summary(aux)$adj.r.squared)) 
+}
+out.1out.lm <- as.data.frame(out.1out.lm)
+names(out.1out.lm) <- c("i","maxyear","loga","a","b",
+                         "loga.var","b.var","a.pval", "b.pval","sigma","adj.rsq")
+
+```
+
+Plots:
+
+```{r, echo=F}
+p <- ggplot(out.1out.lm, aes(maxyear, loga))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=loga-2*sqrt(loga.var), ymax=loga+2*sqrt(loga.var)), fill="grey", alpha=0.3)+
+  # geom_hline(yintercept =0, lty=2)+
+  xlab("Removed year")
+p
+
+p <- ggplot(out.1out.lm, aes(maxyear, b))+
+  geom_line()+
+  geom_point()+
+  geom_ribbon(aes(maxyear, ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)), fill="grey", alpha=0.3)+
+  geom_hline(yintercept =0, lty=2)+
+  xlab("Removed year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, sigma))+
+  geom_line()+
+  geom_point()+
+  ylab(expression(sigma))+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, b.pval))+
+  geom_line()+
+  geom_point()+
+  geom_hline(yintercept=0.05, lty=2)+
+  xlab("Last year")
+p
+
+p <- ggplot(out.retro.lm, aes(maxyear, adj.rsq))+
+  geom_line()+
+  geom_point()+
+  ylab(expression(R^2))+
+  xlab("Last year")
+p
+
+# p <- ggplot(out.1out.lm, aes(a, b))+
+#   # geom_line()+
+#   geom_point()+
+#   geom_errorbar(aes(xmin=a-2*sqrt(a.var), xmax=a+2*sqrt(a.var),
+#                    ymin=b, ymax=b))+
+#   geom_errorbar(aes(xmin=a, xmax=a,
+#                    ymin=b-2*sqrt(b.var), ymax=b+2*sqrt(b.var)))
+  
+```
+
+All models: 
+```{r}
+aux <- data.frame(ssb=seq(0, max(df$ssb), length=1000))
+for (i in 1:nrow(out.1out.lm)){
+  aux <- cbind(aux, out.1out.lm$a[i]*aux$ssb * exp(-out.1out.lm$b[i]*aux$ssb))
+}
+aux <- as.data.frame(aux)
+names(aux) <- c("ssb", paste0("m",out.1out.lm$i))
+aux2 <- pivot_longer(aux, cols=starts_with("m"))
+aux2$name <- factor(aux2$name, levels=paste0("m",out.1out.lm$i), ordered=T)
+
+ggplot(aux2, aes(ssb, value, col=name))+
+  geom_line()+
+  geom_point(data=df, aes(ssb, rec), inherit.aes=F)+
+  ylab("R")+xlab("SSB")
+
+```
+
+# Prediction skill
+
+```{r}
+# number of data points used in the model fit
+n <- nrow(df) 
+
+# number of years to be removed (15 at most), ensure we have at last half of the data for the model fit
+k <- min(floor(n/2), 15) 
+
+# loop
+
+out.pred <- NULL 
+for (i in 1:k){
+  aux <- lm(logr ~ offset(logssb) + ssb, data=subset(df, year<=yr.last-i)) # adjust the function accordingly. it may need for arguments, e.g. family in case of glm/gam
+  pred.dat <- expand.grid(ntrain=(n-i), h=1:i)
+  pred.dat$obs <- df[(n-i+1):n, all.vars(formula(m0))[1], drop=T]
+  pred.dat$fit.mod <- predict(aux, newdata=df[(n-i+1):n, ])
+  # pred.dat$fit.naive <- mean(df[(n-i-2):(n-i), all.vars(formula(m0))[1], drop=T],
+  #                            na.rm=T) # 3 years average prediction
+  pred.dat$fit.naive <- mean(df[1:(n-i), all.vars(formula(m0))[1], drop=T],
+                             na.rm=T) # average past series
+  pred.dat$e.mod <- pred.dat$obs-pred.dat$fit.mod
+  pred.dat$e.naive <- pred.dat$obs-pred.dat$fit.naive
+  out.pred <- rbind(out.pred, pred.dat)
+}
+out.pred <- out.pred %>% 
+  mutate(hclass= cut(h, breaks=c(0, 3, 6, 15)),
+         hterm=cut(h, breaks=c(0, 3, 6, 15), labels=c("short (1-3)", "medium (4-6)","long (7-15)")))
+
+# summarise by ntrain (nb years for training)
+
+res.ntrain <- out.pred %>% 
+  group_by(ntrain) %>% 
+  summarise(n=n(),
+            relmae=mean(abs(e.mod))/mean(abs(e.naive)) )
+res.ntrain
+
+p <- ggplot(res.ntrain, aes(ntrain, relmae))+
+  geom_point(cex=2)+
+  geom_line()+
+  expand_limits(y=0)+
+  geom_hline(yintercept=1, lty=2, col=2)+
+  xlab("Nb years training dataset")+
+  ylab(expression(rMAE=MAE[mod]/MAE[naive]))
+print(p)
+
+# summarise by h (prediction time horizon) 
+
+res.h <- out.pred %>% 
+  group_by(h) %>% 
+  summarise(n=n(), 
+            relmae=mean(abs(e.mod))/mean(abs(e.naive)))
+res.h
+
+print(paste("Simple average of MAE by h", mean(res.h$relmae)))
+print(paste("Weighted average of MAE by h", weighted.mean(res.h$relmae, w=1/res.h$n)))
+
+p <- ggplot(res.h, aes(h, relmae))+
+  geom_point(cex=2)+
+  geom_line()+
+  expand_limits(y=0)+
+  geom_hline(yintercept=1, col=2, lty=2)+
+  geom_hline(yintercept=weighted.mean(res.h$relmae, w=1/res.h$n), col=2, lty=2)+
+  scale_x_continuous(breaks=seq(1, 15))+
+  xlab("Time horizon (years)")+
+  ylab(expression(rMAE=MAE[mod]/MAE[naive]))
+print(p)
+
+# overall MAE (weighted)
+
+aux <- out.pred %>% 
+  group_by(h) %>% 
+  mutate(n=n()) %>% 
+  ungroup() %>% 
+  summarise(relmae=mean(e.mod) / mean(e.naive),
+            relmae.wt=weighted.mean(e.mod, w=1/n) / weighted.mean(e.naive, w=1/n))
+
+print(paste("Ratio of unweighted MAEs", aux$relmae))
+print(paste("Ratio of weighted MAEs", aux$relmae.wt))
+
+# summarise by hclass or hterm (grouped time horizons: short, medium, long)
+
+res.hterm <- out.pred %>% 
+  group_by(hterm) %>% 
+  summarise(relmae=mean(abs(e.mod))/mean(abs(e.naive)) )
+
+p <- ggplot(res.hterm, aes(hterm, relmae))+
+  geom_bar(stat="identity", fill="grey")+
+  expand_limits(y=0)+
+  geom_hline(yintercept=1, lty=2, col=2)+
+  xlab("Time horizon classes")+
+  ylab(expression(rMAE=MAE[mod]/MAE[naive]))
+print(p)
+
+# save out results
+
+saveRDS(out.pred, file=file.path("results","output_predskill_rick.rds"))
+saveRDS(m0, file=file.path("results","model_predskill_rick.rds"))
+
+```

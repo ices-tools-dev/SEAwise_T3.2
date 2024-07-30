@@ -1,0 +1,440 @@
+---
+title: "Environmental covariates for anchovy in subarea 8 with uncertainty"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(FLCore)
+
+library(ggforce)
+library(sf)
+
+library(gridExtra)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+We read the whole time series available (not only data from 1987 used for the model fit). 
+
+
+```{r}
+
+# ui: yearly from 1948 to 2021
+
+ui <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="UI")
+
+ui <- ui %>% 
+  rename(year=AÑO) %>% 
+  mutate(month=1, date=as.Date(paste0(year, "-01-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>%  
+  select(year, date, UI)
+
+
+# turb: monthly from 1948/01 to 2021/12
+
+turb <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="TURB")
+
+turb <- turb %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, TURB)
+
+# compute turbulence per year
+
+turb <- turb %>%
+  group_by(year) %>% 
+  summarise(TURB.mean=mean(TURB, na.rm=T),
+            TURB.min=min(TURB, na.rm=T),
+            TURB.max=max(TURB, na.rm=T),
+            TURB.sd=sqrt(var(TURB, na.rm=T)),
+            TURB.q1=mean(TURB[quarter==1], na.rm=T),
+            TURB.q2=mean(TURB[quarter==2], na.rm=T),
+            TURB.q3=mean(TURB[quarter==3], na.rm=T),
+            TURB.q4=mean(TURB[quarter==4], na.rm=T),
+            TURB.s1=mean(TURB[semester==1], na.rm=T),
+            TURB.s2=mean(TURB[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+
+# merge two datasets (ui and turb)
+
+df <- merge(ui, turb, by=c("year"))
+df <- df %>% 
+  mutate(logUI=log(UI),
+         logTURB.q3=log(TURB.q3))
+names(df)
+range(df$year)
+
+# number of simulations
+
+nit <- 10000
+
+```
+# Upwelling index
+
+Fit "best" model (see file `6_surrogate_env.html.html`:
+
+```{r}
+
+# linear model
+
+m.lm <- lm(logUI ~ year, data=df)
+summary(m.lm)
+
+# best p
+
+p <- 18
+
+# initial model
+mod0 <- lm(logUI ~ sin(2*pi*year/p) + cos(2*pi*year/p) + year, data=df) 
+summary(mod0)
+
+# remove non-significant term
+mod <- lm(logUI ~ sin(2*pi*year/p) + year, data=df) 
+summary(mod)
+
+plot(df$year, df$logUI, xlab="", ylab="log(UI)", type="o")
+lines(df$year, predict(mod0), col=2)
+lines(df$year, predict(mod), col=3)
+
+plot(resid(mod), xlab="", ylab="Residuals")
+abline(h=0)
+
+```
+
+Prediction (1 and 1000 iterations)
+
+```{r}
+set.seed(333) # set the seed
+
+# one random realisation
+
+pred.ui <- data.frame(year=2022:2099)
+pred.ui$UI <- rlnorm(nrow(pred.ui),
+                     predict(mod, newdata=pred.ui), 
+                     sd=summary(mod)$sigma)
+
+plot(df$year, log(df$UI), type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="logUI", ylim=range(c(log(df$UI), log(pred.ui$UI)), na.rm=T))
+lines(pred.ui$year, log(pred.ui$UI), type="o", pch=19, col=2)
+
+plot(df$year, df$UI, type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="UI", ylim=c(0, max(df$UI, pred.ui$UI)))
+lines(pred.ui$year, pred.ui$UI, type="o", pch=19, col=2)
+
+# 1000 random realisations
+
+tmp <- sapply(1:nit, function(x) 
+  rlnorm(nrow(pred.ui), predict(mod, newdata=pred.ui), sd=summary(mod)$sigma))
+
+# transform to FLQuant
+pred.ui.quant <- as.FLQuant(tmp, dim=c(1, nrow(pred.ui),1,1,1,nit))
+dimnames(pred.ui.quant)$year <- pred.ui$year
+# plot(pred.ui.quant)
+
+as.data.frame(pred.ui.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+
+# NO CLIMATE CHANGE SCENARIO
+# 1000 random realisations
+
+tmp <- sapply(1:nit, function(x) 
+  rlnorm(nrow(pred.ui), 
+         predict(mod, newdata=pred.ui)-predict(mod, newdata=pred.ui, type="terms")[,"year"]+
+           c(predict(mod, newdata=data.frame(year=2022), type="terms")[,"year"]), # adjustment to scale to 2022 level,
+         sd=summary(mod)$sigma))
+
+
+# transform to FLQuant
+pred.ui.nocc.quant <- as.FLQuant(tmp, dim=c(1, nrow(pred.ui),1,1,1,nit))
+dimnames(pred.ui.nocc.quant)$year <- pred.ui$year
+# plot(pred.ui.nocc.quant)
+
+as.data.frame(pred.ui.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+
+
+```
+
+# Turbulence
+
+Fit "best" model (see file `6_surrogate_env.html.html`:
+
+```{r}
+p <- 37
+
+# initial model
+
+mod0 <- lm(logTURB.q3 ~ sin(2*pi*year/p) + cos(2*pi*year/p) + year, data=df) 
+summary(mod0)
+
+# remove non-significant term
+mod <- lm(logTURB.q3 ~ cos(2*pi*year/p) + year, data=df) 
+summary(mod)
+
+plot(df$year, df$logTURB.q3, xlab="", ylab="log(TURB.q3)", type="o")
+lines(df$year, predict(mod0), col=2)
+lines(df$year, predict(mod), col=3)
+
+plot(resid(mod), xlab="", ylab="Residuals")
+abline(h=0)
+
+```
+
+Prediction
+
+```{r}
+set.seed(555) # set the seed
+
+# one random realisation
+
+pred.turb <- data.frame(year=2022:2099)
+pred.turb$TURB.q3 <- rlnorm(nrow(pred.turb),
+                     predict(mod, newdata=pred.turb), 
+                     sd=summary(mod)$sigma)
+
+plot(df$year, log(df$TURB.q3), type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="log turb", ylim=range(c(log(df$TURB.q3), log(pred.turb$TURB.q3)), na.rm=T))
+lines(pred.turb$year, log(pred.turb$TURB.q3), type="o", pch=19, col=2)
+
+plot(df$year, df$TURB.q3, type="o", col=1, pch=19, xlim=c(1948,2099), xlab="", ylab="turb", ylim=c(0, max(df$TURB.q3, pred.turb$TURB.q3)))
+lines(pred.turb$year, pred.turb$TURB.q3, type="o", pch=19, col=2)
+
+# 1000 random realisations
+
+tmp <- sapply(1:nit, function(x) rlnorm(nrow(pred.turb), predict(mod, newdata=pred.turb), sd=summary(mod)$sigma))
+# dim(tmp)
+
+# transform to FLQuant
+pred.turb.quant <- as.FLQuant(tmp, dim=c(1, nrow(pred.turb),1,1,1,nit))
+dimnames(pred.turb.quant)$year <- pred.turb$year
+# plot(pred.turb.quant)
+
+as.data.frame(pred.turb.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+
+# NO CLIMATE CHANGE SCENARIO
+# 1000 random realisations
+
+tmp <- sapply(1:nit, function(x) 
+  rlnorm(nrow(pred.turb), 
+         predict(mod, newdata=pred.turb)-predict(mod, newdata=pred.turb, type="terms")[,"year"]+
+           c(predict(mod, newdata=data.frame(year=2022), type="terms")[,"year"]), # adjustment to scale to 2022 level,
+         sd=summary(mod)$sigma))
+
+# transform to FLQuant
+pred.turb.nocc.quant <- as.FLQuant(tmp, dim=c(1, nrow(pred.turb),1,1,1,nit))
+dimnames(pred.turb.nocc.quant)$year <- pred.turb$year
+# plot(pred.turb.nocc.quant)
+
+as.data.frame(pred.turb.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+
+```
+
+# Check the joint distribution 
+
+With CC: 
+
+```{r}
+
+points.sf <- st_as_sf(subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), coords=c("UI","TURB.q3"))
+
+hull0 <- st_convex_hull(st_union(points.sf)) # without buffer
+hull <- st_buffer(hull0, dist=50) # with buffer
+hull <- as.data.frame(st_coordinates(hull)[,1:2]) # extract coordinates
+names(hull) <- c("UI","TURB.q3") # change names
+hull.sf <- sfheaders::sf_polygon(obj = hull)
+
+test <- data.frame(UI=c(pred.ui.quant), TURB.q3=c(pred.turb.quant))
+test.sf <- st_as_sf(test, coords=c("UI","TURB.q3"))
+test$sel <- st_within(test.sf, hull.sf, sparse=F)
+
+ggplot(test, aes(UI, TURB.q3, col=sel))+
+  geom_point(alpha=0.3)+
+  geom_point(data=subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), aes(x=UI, y=TURB.q3), pch=19, col=1, inherit.aes = F)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=1, fill=NA, inherit.aes=F)
+
+# are there enough samples to reach 1000 iterations?
+
+cbind(as.data.frame(pred.ui.quant), test) %>% 
+  subset(sel) %>% 
+  group_by(year) %>% 
+  summarise(n=dplyr::n())
+
+# subsample
+
+tmp <- cbind(as.data.frame(pred.ui.quant), test) %>% 
+  subset(sel) %>% 
+  group_by(year) %>% 
+  slice_sample(n=1000, replace=F)%>% 
+  mutate(it.new=1:dplyr::n()) %>% 
+  # mutate(it.new=1:1000) %>% 
+  arrange(it.new, year)
+
+dim(tmp)
+table(tmp$year)
+
+cbind(tmp) %>% 
+  group_by(year) %>% 
+  summarise(n=dplyr::n()) 
+
+p <- ggplot(tmp, aes(UI, TURB.q3, col=sel))+
+  geom_point(alpha=0.3)+
+  geom_point(data=subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), aes(x=UI, y=TURB.q3), pch=19, col=1, inherit.aes = F)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=1, fill=NA, inherit.aes=F)
+p
+
+as.data.frame(tmp) %>% 
+  ggplot(aes(year, UI, group=year))+
+  geom_boxplot()
+
+as.data.frame(tmp) %>% 
+  ggplot(aes(year, TURB.q3, group=year))+
+  geom_boxplot()
+
+# transform to FLQuants
+pred.ui.bound.quant <- as.FLQuant(tmp$UI, dim=c(1, nrow(pred.ui),1,1,1,1000))
+dimnames(pred.ui.bound.quant)$year <- pred.ui$year
+
+pred.turb.bound.quant <- as.FLQuant(tmp$TURB.q3, dim=c(1, nrow(pred.turb),1,1,1,1000))
+dimnames(pred.turb.bound.quant)$year <- pred.turb$year
+
+```
+
+Without CC: 
+
+```{r}
+
+points.sf <- st_as_sf(subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), coords=c("UI","TURB.q3"))
+
+hull0 <- st_convex_hull(st_union(points.sf)) # without buffer
+hull <- st_buffer(hull0, dist=50) # with buffer
+hull <- as.data.frame(st_coordinates(hull)[,1:2]) # extract coordinates
+names(hull) <- c("UI","TURB.q3") # change names
+hull.sf <- sfheaders::sf_polygon(obj = hull)
+
+test <- data.frame(UI=c(pred.ui.nocc.quant), TURB.q3=c(pred.turb.nocc.quant))
+test.sf <- st_as_sf(test, coords=c("UI","TURB.q3"))
+test$sel <- st_within(test.sf, hull.sf, sparse=F)
+
+ggplot(test, aes(UI, TURB.q3, col=sel))+
+  geom_point(alpha=0.3)+
+  geom_point(data=subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), aes(x=UI, y=TURB.q3), pch=19, col=1, inherit.aes = F)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=1, fill=NA, inherit.aes=F)
+
+# are there enough samples to reach 1000 iterations?
+
+cbind(as.data.frame(pred.ui.nocc.quant), test) %>% 
+  subset(sel) %>% 
+  group_by(year) %>% 
+  summarise(n=dplyr::n())
+
+# subsample
+
+tmp <- cbind(as.data.frame(pred.ui.nocc.quant), test) %>% 
+  subset(sel) %>% 
+  group_by(year) %>% 
+  slice_sample(n=1000, replace=F) %>% 
+  mutate(it.new=1:dplyr::n()) %>% 
+  # mutate(it.new=1:1000) %>% 
+  arrange(it.new, year)
+
+dim(tmp)
+table(tmp$year)
+
+cbind(tmp) %>% 
+  group_by(year) %>% 
+  summarise(n=dplyr::n()) 
+
+p <- ggplot(tmp, aes(UI, TURB.q3, col=sel))+
+  geom_point(alpha=0.3)+
+  geom_point(data=subset(df, select=c("UI","TURB.q3"), year %in% c(1987:2021)), aes(x=UI, y=TURB.q3), pch=19, col=1, inherit.aes = F)+
+  geom_polygon(data=hull, aes(UI, TURB.q3), col=1, fill=NA, inherit.aes=F)
+p
+
+as.data.frame(tmp) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+
+# transform to FLQuants
+pred.ui.bound.nocc.quant <- as.FLQuant(tmp$UI, dim=c(1, nrow(pred.ui),1,1,1,1000))
+dimnames(pred.ui.bound.nocc.quant)$year <- pred.ui$year
+
+pred.turb.bound.nocc.quant <- as.FLQuant(tmp$TURB.q3, dim=c(1, nrow(pred.turb),1,1,1,1000))
+dimnames(pred.turb.bound.nocc.quant)$year <- pred.turb$year
+
+```
+
+# comparison
+
+```{r}
+p1 <- as.data.frame(pred.ui.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+p2 <- as.data.frame(pred.ui.bound.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+grid.arrange(p1, p2, ncol=2)
+
+p1 <- as.data.frame(pred.ui.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+p2 <- as.data.frame(pred.ui.bound.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+grid.arrange(p1, p2, ncol=2)
+
+p1 <- as.data.frame(pred.turb.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+p2 <- as.data.frame(pred.turb.bound.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+grid.arrange(p1, p2, ncol=2)
+
+p1 <- as.data.frame(pred.turb.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+p2 <- as.data.frame(pred.turb.bound.nocc.quant) %>% 
+  ggplot(aes(year, data, group=year))+
+  geom_boxplot()
+grid.arrange(p1, p2, ncol=2)
+
+```
+
+# Save dataset
+
+```{r, eval=T}
+saveRDS(iter(pred.ui.quant, 1:1000), file="results/ui_projection_1000it.RDS")
+saveRDS(iter(pred.turb.quant, 1:1000), file="results/turb_projection_1000it.RDS")
+saveRDS(iter(pred.ui.nocc.quant, 1:1000), file="results/ui_nocc_projection_1000it.RDS")
+saveRDS(iter(pred.turb.nocc.quant, 1:1000), file="results/turb_nocc_projection_1000it.RDS")
+
+saveRDS(pred.ui.bound.quant, file="results/ui_bound_projection_1000it.RDS")
+saveRDS(pred.turb.bound.quant, file="results/turb_bound_projection_1000it.RDS")
+saveRDS(pred.ui.bound.nocc.quant, file="results/ui_bound_nocc_projection_1000it.RDS")
+saveRDS(pred.turb.bound.nocc.quant, file="results/turb_bound_nocc_projection_1000it.RDS")
+```
+

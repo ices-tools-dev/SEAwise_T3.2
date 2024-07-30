@@ -1,0 +1,405 @@
+---
+title: "SR models with environmental covariates for anchovy in subarea 8 (1987-2021)"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# load libraries
+library(FLCore)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(ggrepel)
+library(flextable)
+
+library(GGally)
+library(ggcorrplot)
+library(car)
+library(MASS)
+
+library(mgcv)
+library(gratia)
+library(brms)
+
+library(readxl)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+```{r}
+# load object from WGHANSA 2022
+load(file.path("..","data","aneq.stk.RData")) # aneq.stk
+
+# remove 2023
+
+aneq.stk <- window(aneq.stk, end=2022)
+
+# recruitment (1st January)
+# change units
+
+rec <- rec(aneq.stk)
+rec <- rec*1e-6
+units(rec) <- "1e9"
+
+# ssb (from FLBiols because it is the same as used in FLBEIA)
+
+aneq.biol <- as(aneq.stk, "FLBiol")
+ssb <- ssb(aneq.biol)
+# equivalently, (i.e. without fishing mortality)
+# quantSums(stock.n(aneq.stk)*exp(-m(aneq.stk)*m.spwn(aneq.stk))*stock.wt(aneq.stk)*mat(aneq.stk))
+ssb <- ssb/1000
+units(ssb) <- "1000 t"
+
+# create data frame
+
+df <- data.frame(year=as.numeric(dimnames(aneq.stk)$year), 
+                 rec=as.numeric(rec), 
+                 ssb=as.numeric(ssb))
+
+# create log variables
+
+df <- df %>% 
+  mutate(logr=log(rec),
+         logssb=log(ssb),
+         rat=rec/ssb, 
+         lograt=log(rat))
+
+dat <- read.csv(file.path("..","data","env_data.csv"), sep=",")
+
+df <- left_join(df, dat)
+df <- subset(df, select=-c(date)) # remove the date column (which is a character)
+names(df)
+```
+
+# Basic Ricker fitted as lm
+
+```{r}
+# all years:
+m0.2022 <- lm(logr ~ offset(logssb) + ssb, data=df)
+coef(m0.2022)
+
+# given that there are no env data in 2022, the reference model is until 2021
+m0 <- lm(logr ~ offset(logssb) + ssb, data=subset(df, year<2022)) 
+# equivalently: 
+# m0bis <- lm(lograt ~ ssb, data=df)
+
+coef(m0)
+summary(m0)
+anova(m0)
+confint(m0, level=0.95)
+
+plot(m0)
+
+df$res <- residuals(m0.2022) # we include the residuals in df
+ 
+```
+
+# Exploratory analysis 1987-2021
+
+Cross-correlation analysis: 
+
+```{r, fig.width=15, fig.height=15}
+mat <- cor(df, use="complete.obs", method="pearson") 
+p.mat <- cor_pmat(df)
+ggcorrplot(mat, type = "lower", p.mat = p.mat, legend.title="Pearson corr")
+
+mat <- cor(df, use="complete.obs", method="spearman") 
+p.mat <- cor_pmat(df, method="spearman")
+ggcorrplot(mat, type = "lower", p.mat = p.mat, legend.title="Spearman corr")
+
+```
+
+```{r, fig.width=15, fig.height=15}
+
+envsel <- c("AMO.mean","AMO.q1",
+         "EA.mean","EA.max","EA.s2",
+         "NAO.mean","NAO.sd",
+         "TURB.mean","TURB.q3",
+         "UI","WMLD")
+vsel <- c("logr","logssb","ssb","lograt","res",
+         envsel)
+
+tmp <- subset(df, select=vsel)
+
+mat <- cor(tmp, use="complete.obs") 
+p.mat <- cor_pmat(tmp)
+ggcorrplot(mat, type = "lower", p.mat = p.mat, legend.title="Pearson corr")
+
+mat <- cor(tmp, use="complete.obs", method="spearman") 
+p.mat <- cor_pmat(tmp, method="spearman")
+ggcorrplot(mat, type = "lower", p.mat = p.mat, legend.title="Spearman Corr")
+
+```
+
+```{r, fig.width=15, fig.height=15}
+ggpairs(subset(df, select=vsel)) 
+```
+
+Time series of selected explanatory variables: 
+
+```{r, fig.width=15, fig.height=15}
+tmp <- pivot_longer(df, cols=-year)
+tmp <- subset(tmp, name %in% vsel)
+p <- ggplot(tmp, aes(year, value, group=name))+
+  geom_point()+
+  geom_line()+
+  geom_smooth(stat="smooth", col=2, fill=2, alpha=0.3)+ 
+  facet_wrap(~ factor(name, levels=vsel), scales="free")+ # to reorder the levels in the plot
+  xlab("")+
+  ylab("")
+p
+
+```
+
+VIF analysis:
+
+```{r}
+m.all <- lm(as.formula(paste("logr ~ offset(logssb) + ssb +", paste(envsel,collapse="+"))), data=subset(df, year<2022))
+summary(m.all)
+anova(m.all)
+out.vif <- vif(m.all) # function in the car library
+
+p <- ggplot(data.frame(vif=out.vif, name=names(out.vif)), aes(name, vif))+
+  geom_bar(stat="identity", col="blue", fill="blue")+
+  geom_hline(yintercept=5, lty=2, lwd=1)+
+  coord_flip()
+p
+
+#The value for VIF starts at 1 and has no upper limit. A general rule of thumb for interpreting VIFs is as follows:
+
+#A value of 1 indicates there is no correlation between a given predictor variable and any other predictor variables in the model.
+#A value between 1 and 5 indicates moderate correlation between a given predictor variable and other predictor variables in the model, but this is often not severe enough to require attention.
+#A value greater than 5 indicates potentially severe correlation between a given predictor variable and other predictor variables in the model. In this case, the coefficient estimates and p-values in the regression output are likely unreliable.
+```
+
+These are the most plausible models, according to the level of significance of the variables:  
+
+```{r}
+m1 <- lm(as.formula(paste("logr ~ offset(logssb) + ssb +", paste(c("UI","TURB.q3","EA.s2"),collapse="+"))), data=subset(df, year<2022))
+summary(m1)
+
+m2 <- lm(as.formula(paste("logr ~ offset(logssb) + ssb +", paste(c("UI","TURB.q3"),collapse="+"))), data=subset(df, year<2022))
+summary(m2)
+
+m3 <- lm(as.formula(paste("logr ~ offset(logssb) + ssb +", paste(c("UI"),collapse="+"))), data=subset(df, year<2022))
+summary(m3)
+
+anova(m0, m3, m2, m1)
+AIC(m0, m3, m2, m1)
+BIC(m0, m3, m2, m1)
+```
+
+# Ricker with environmental variables (linear)
+
+Stepwise backward selection:
+
+```{r}
+# we remove AMO.mean because the last year is complete, so the last year value is not correct
+# we remove WMLD because it has 2 NA's
+
+envsel <- c("AMO.q1", 
+         "EA.mean","EA.max","EA.s2",
+         "NAO.mean","NAO.sd",
+         "TURB.mean","TURB.q3",
+         "UI")
+```
+
+```{r}
+modback <- stepAIC(m.all, trace=TRUE, direction="backward")
+modback$anova
+summary(modback)
+
+
+modforw <- stepAIC(m0, trace=TRUE, direction="forward", scope=as.formula(paste("logr ~ offset(logssb) + ssb +", paste(envsel,collapse="+"))))
+modforw$anova
+summary(modforw)
+
+modboth <- stepAIC(m0, trace=TRUE, direction="both", scope=as.formula(paste("logr ~ offset(logssb) + ssb +", paste(envsel,collapse="+"))))
+modboth$anova
+summary(modboth)
+
+```
+
+# Ricker with environmental variables (smooths)
+
+```{r}
+mm01 <- gam(logr ~ offset(logssb) + ssb + s(AMO.q1), data=subset(df, year<2022))
+mm02 <- gam(logr ~ offset(logssb) + ssb + s(EA.mean), data=subset(df, year<2022))
+mm03 <- gam(logr ~ offset(logssb) + ssb + s(EA.s2), data=subset(df, year<2022))
+mm04 <- gam(logr ~ offset(logssb) + ssb + s(NAO.mean), data=subset(df, year<2022))
+mm05 <- gam(logr ~ offset(logssb) + ssb + s(TURB.mean), data=subset(df, year<2022))
+mm06 <- gam(logr ~ offset(logssb) + ssb + s(TURB.q3), data=subset(df, year<2022))
+mm07 <- gam(logr ~ offset(logssb) + ssb + s(UI), data=subset(df, year<2022))
+mm08 <- gam(logr ~ offset(logssb) + ssb + s(WMLD), data=subset(df, year<2022))
+
+summary(mm01)
+summary(mm02)
+summary(mm03)
+summary(mm04)
+summary(mm05)
+summary(mm06)
+summary(mm07)
+summary(mm08)
+
+unlist(lapply(list(mm01, mm02, mm03, mm04, mm05, mm06, mm07, mm08), function(x) x$gcv.ubre))
+unlist(lapply(list(mm01, mm02, mm03, mm04, mm05, mm06, mm07, mm08), AIC))
+
+mm09 <- gam(logr ~ offset(logssb) + ssb + s(UI) + s(TURB.q3), data=subset(df, year<2022))
+summary(mm09)
+gam.check(mm09)
+draw(mm09) # using gratia
+draw(mm09, residuals=T) # using gratia
+appraise(mm09) # using gratia
+unlist(lapply(list(mm06, mm07, mm09), function(x) x$gcv.ubre))
+unlist(lapply(list(mm06, mm07, mm09), AIC))
+
+mm10 <- gam(logr ~ offset(logssb) + ssb + UI + s(TURB.q3), data=subset(df, year<2022))
+summary(mm10)
+gam.check(mm10)
+plot(mm10)
+draw(mm10) # using gratia
+draw(mm10, residuals=T) # using gratia
+appraise(mm10) # using gratia
+
+mm0 <- gam(logr ~ offset(logssb) + ssb , data=subset(df, year<2022))
+summary(mm0)
+
+
+mm10b <- gam(logr ~ offset(logssb) + ssb + UI + s(TURB.q3), data=subset(df, year<2022), method="REML")
+summary(mm10b)
+gam.check(mm10b)
+plot(mm10b)
+
+anova(mm06, mm09, test="F")
+anova(mm07, mm09, test="F")
+
+tmp0 <- predict(m0, newdata=df, type="response", se.fit=T)
+tmp1 <- predict(mm10, newdata=df, type="response", se.fit=T)
+pred.dat <- data.frame(year=df$year, rec=df$rec, ssb=df$ssb,
+                       fit0=tmp0$fit, se.fit0=tmp0$se.fit, 
+                       fit1=tmp1$fit, se.fit1=tmp1$se.fit)
+p <- ggplot(pred.dat, aes(year, log(rec)))+
+  geom_point()+
+  geom_line()+
+  geom_line(aes(year, fit1), col=2)+
+  geom_point(aes(year, fit1), col=2, pch=1)+
+  geom_ribbon(aes(ymin=fit1-se.fit1, ymax=fit1+se.fit1), col=2, fill=2, alpha=0.5)+
+  geom_line(aes(year, fit0), col=4)+
+  geom_point(aes(year, fit0), col=4, pch=1)+
+  geom_ribbon(aes(ymin=fit0-se.fit0, ymax=fit0+se.fit0), col=4, fill=4, alpha=0.5)+
+  xlab("")+
+  ylab("log(rec)")
+print(p)
+
+p <- ggplot(pred.dat)+
+  geom_point(aes(year, y=log(rec)-fit1), col=2)+
+  geom_line(aes(year, y=log(rec)-fit1), col=2)+
+  geom_point(aes(year, y=log(rec)-fit0), col=4)+
+  geom_line(aes(year, y=log(rec)-fit0), col=4)+
+  ylab("Residuals")+
+  xlab("")
+print(p)
+
+
+p <- ggplot(pred.dat, aes(year, fit0))+
+  geom_ribbon(aes(ymin=fit0-se.fit0, ymax=fit0+se.fit0), fill="grey", alpha=0.5)+
+  geom_line(col=1)+
+  geom_point(data=pred.dat, aes(x=year, y=log(rec)))+
+  xlab("")+
+  ylab("Log Recruits (age 0)")+
+  expand_limits(y=0)
+p
+
+p <- ggplot(pred.dat, aes(year, fit1))+
+  geom_ribbon(aes(ymin=fit1-se.fit1, ymax=fit1+se.fit1), fill="grey", alpha=0.5)+
+  geom_line(col=1)+
+  geom_point(data=pred.dat, aes(x=year, y=log(rec)))+
+  xlab("")+
+  ylab("Log Recruits (age 0)")+
+  expand_limits(y=0)
+p
+
+
+tmp0 <- predict(m0, newdata=data.frame(ssb=seq(0.1, 220, length=500), logssb=log(seq(0.1, 220, length=500))), type="response", se.fit=T)
+pred.dat <- data.frame(ssb=seq(0.1, 220, length=500),
+                       fit0=tmp0$fit, se.fit0=tmp0$se.fit)
+
+p <- ggplot(pred.dat, aes(ssb, exp(fit0)))+
+  geom_ribbon(aes(ymin=exp(fit0-se.fit0), ymax=exp(fit0+se.fit0)), fill="grey", alpha=0.5)+
+  geom_line(col=1)+
+  geom_point(data=df, aes(x=ssb, y=rec))+
+  xlab("SSB")+
+  ylab("Recruits (age 0)")+
+  expand_limits(y=0, x=0)
+p
+
+```
+
+# approximate model by linear terms
+
+```{r}
+ss10 <- gam(logr ~ offset(logssb) + ssb + UI + TURB.q3 + I(TURB.q3^2) + I(TURB.q3^3), data=subset(df, year<2022))
+# equivalently: 
+# ss10b <- glm(logr ~ offset(logssb) + ssb + UI + poly(TURB.q3, 3), data=subset(df, year<2022))
+summary(ss10)
+gam.check(ss10)
+plot(ss10, all.term=T, ask=F)
+draw(ss10, parametric=T) # using gratia
+draw(ss10, parametric=T, residuals=T) # using gratia
+appraise(ss10) # using gratia
+
+mm11 <- gam(logr ~ offset(logssb) + ssb + UI + TURB.q3, data=subset(df, year<2022))
+summary(mm11)
+gam.check(mm11)
+plot(mm11, all.term=T, ask=F)
+draw(mm11, parametric=T) # using gratia
+draw(mm11, parametric=T, residuals=T) # using gratia
+appraise(mm11) # using gratia
+
+```
+
+# Using brms
+
+```{r, eval=F}
+bb1 <- brm(bf(logr ~ offset(logssb) + ssb + UI + TURB.q3),
+          data = df, family = gaussian(), cores = 4, seed = 17,
+          iter = 4000, warmup = 1000, thin = 10, refresh = 0,
+          control = list(adapt_delta = 0.99))
+
+summary(bb1)
+
+
+
+bb2 <- brm(bf(logr ~ offset(logssb) + ssb + s(UI) + s(TURB.q3)),
+          data = df, family = gaussian(), cores = 4, seed = 17,
+          iter = 4000, warmup = 1000, thin = 10, refresh = 0,
+          control = list(adapt_delta = 0.99))
+
+summary(bb2)
+plot(marginal_smooths(bb2))
+```
+
+# Save objects
+
+```{r}
+dir.create("results")
+saveRDS(mm10, file=file.path("results","sr_model_ane.rds"))
+saveRDS(df, file=file.path("results","sr_data_ane.rds"))
+```
+
+

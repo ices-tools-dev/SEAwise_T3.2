@@ -1,0 +1,872 @@
+---
+title: "Preliminary analysis of environmental indices"
+author: "Leire Ibaibarriaga"
+date:   "`r format(Sys.time(), '%d %B, %Y')`" 
+output:
+    html_document:
+      toc: true
+      toc_depth: 3
+      number_sections: true
+      fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Libraries
+
+```{r}
+# load libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(flextable)
+library(lubridate)
+library(GGally)
+library(ggcorrplot)
+
+library(readxl)
+
+theme_set(theme_bw(base_size = 16))
+```
+
+# Data preparation
+
+```{r}
+# load environmental data (same as prepared by Ixak, Almudena and Leire)
+
+amo <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="AMO")
+ea <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="EA")
+nao <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="NAO")
+ui <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="UI")
+turb <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="TURB")
+wmld <- read_excel(file.path("..","data","Procesos_ambientales_anchoa_LI.xlsx"), sheet="WMLD")
+
+# amo: monthly from 1870/01 to 2021/03
+# ea: monthly from 1950/01 to 2021/12
+# nao: monthly from 1950/01 to 2021/12
+# ui: yearly from 1948 to 2021
+# turb: monthly from 1948/01 to 2021/12
+# wmld: yearly from 1986 to 2020
+
+# add date, change column names and reorder columns
+
+amo <- amo %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, AMO)
+
+ea <- ea %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, EA)
+
+nao <- nao %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, NAO)
+
+turb <- turb %>% 
+  rename(year=AÑO, month=MES) %>% 
+  mutate(date=as.Date(paste0(year, "-", month, "-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, month, quarter, semester, date, TURB)
+
+ui <- ui %>% 
+  rename(year=AÑO) %>% 
+  mutate(month=1, date=as.Date(paste0(year, "-01-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>%  
+  select(year, date, UI)
+
+wmld <- wmld %>% 
+  rename(year=AÑO,
+         WMLD=WMLDmax) %>% 
+  mutate(month=1, date=as.Date(paste0(year, "-01-01"), "%Y-%m-%d"),
+         quarter=lubridate::quarter(date),
+         semester=lubridate::semester(date)) %>% 
+  select(year, date, WMLD)
+
+```
+
+# AMO
+
+```{r}
+p <- ggplot(amo, aes(date, AMO)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo, aes(date, AMO)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo, aes(date, AMO)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo, aes(date, AMO)) +
+  geom_ribbon(aes(ymin=0, ymax=AMO), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo, aes(date, AMO)) +
+  geom_col(data = subset(amo, AMO <= 0), fill = "red") + 
+  geom_col(data = subset(amo, AMO > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(subset(amo, year>1980), aes(date, AMO)) +
+  geom_col(data = subset(amo, year>1980 & AMO <= 0), fill = "red") + 
+  geom_col(data = subset(amo, year>1980 & AMO > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("AMO")
+p
+
+
+# https://stackoverflow.com/questions/54687321/fill-area-above-and-below-horizontal-line-with-different-colors
+
+m <- 0
+# identify each run of points completely above (or below) the horizontal line as a new section
+tmp <- amo %>%  
+  mutate(x=1:nrow(amo)) %>% 
+  select(x, AMO) %>% 
+  arrange(x) %>%
+  mutate(above.m = AMO >= m) %>%
+  mutate(changed = is.na(lag(above.m)) | lag(above.m) != above.m) %>%
+  mutate(section.id = cumsum(changed)) %>%
+  select(-above.m, -changed)
+# calculate the x-coordinate of the midpoint between adjacent sections (the y-coordinate would be m), & add this to the data frame
+tmp <- rbind(
+  tmp,
+  tmp %>%
+    group_by(section.id) %>%
+    filter(x %in% c(min(x), max(x))) %>%
+    ungroup() %>%
+    mutate(mid.x = ifelse(section.id == 1 | 
+                            section.id == lag(section.id), 
+                          NA,
+                          x - (x - lag(x)) / 
+                            (AMO - lag(AMO)) * (AMO - m))) %>% 
+    select(mid.x, AMO, section.id) %>%
+    rename(x = mid.x) %>%
+    mutate(AMO = m) %>%
+    na.omit())
+# transform back x into date
+tmp <- tmp %>% 
+  mutate(date=amo$date[x])
+
+p <- ggplot(tmp, aes(date, AMO)) +      
+  geom_ribbon(data = . %>% filter(AMO >= m),
+              aes(ymin = m, ymax = AMO), 
+              fill="dodgerblue") +
+  geom_ribbon(data = . %>% filter(AMO <= m),
+              aes(ymin = AMO, ymax = m), 
+              fill = "firebrick1")+
+  xlab("")+
+  ylab("AMO")
+p
+
+# decompose time series
+
+tmp <- amo
+tmp <- ts(tmp$AMO, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+# decompose time series (from 1980 onwards)
+
+tmp <- subset(amo, year>1980)
+tmp <- ts(tmp$AMO, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+tmp0 <- decompose(tmp)
+plot(tmp0$seasonal[1:12], type="o", pch=19, xlab="Month", ylab="Seasonal pattern")
+abline(h=0, lty=2)
+
+```
+
+Compute 1 index per year
+
+```{r}
+amo.df <- amo %>%
+  group_by(year) %>% 
+  summarise(AMO.mean=mean(AMO, na.rm=T),
+            AMO.min=min(AMO, na.rm=T),
+            AMO.max=max(AMO, na.rm=T),
+            AMO.sd=sqrt(var(AMO, na.rm=T)),
+            AMO.q1=mean(AMO[quarter==1], na.rm=T),
+            AMO.q2=mean(AMO[quarter==2], na.rm=T),
+            AMO.q3=mean(AMO[quarter==3], na.rm=T),
+            AMO.q4=mean(AMO[quarter==4], na.rm=T),
+            AMO.s1=mean(AMO[semester==1], na.rm=T),
+            AMO.s2=mean(AMO[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+```
+
+```{r, fig.width=15, fig.height=15}
+ggpairs(amo.df[, -1]) 
+```
+
+```{r}
+mat <- cor(amo.df[, -1], use="complete.obs") 
+p.mat <- cor_pmat(amo.df[, -1])
+
+ggcorrplot(mat, type = "lower", lab=T, p.mat = p.mat)
+```
+
+```{r}
+p <- ggplot(amo.df, aes(year, AMO.mean)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo.df, aes(year, AMO.mean)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo.df, aes(year, AMO.mean)) +
+  geom_col(fill = "blue") +
+  xlab("")+
+  ylab("AMO")
+p
+
+p <- ggplot(amo.df, aes(year, AMO.mean)) +
+  geom_col(data = subset(amo.df, AMO.mean <= 0), fill = "red") + 
+  geom_col(data = subset(amo.df, AMO.mean > 0), fill = "blue") +
+  xlab("")+
+  ylab("AMO")
+p
+
+```
+
+# EA
+
+```{r}
+p <- ggplot(ea, aes(date, EA)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea, aes(date, EA)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea, aes(date, EA)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea, aes(date, EA)) +
+  geom_ribbon(aes(ymin=0, ymax=EA), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea, aes(date, EA)) +
+  geom_col(data = subset(ea, EA <= 0), fill = "red") + 
+  geom_col(data = subset(ea, EA > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(subset(ea, year > 1980), aes(date, EA)) +
+  geom_col(data = subset(ea, year > 1980 & EA <= 0), fill = "red") + 
+  geom_col(data = subset(ea, year>1980 & EA > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("EA")
+p
+
+
+# https://stackoverflow.com/questions/54687321/fill-area-above-and-below-horizontal-line-with-different-colors
+
+m <- 0
+# identify each run of points completely above (or below) the horizontal line as a new section
+tmp <- ea %>%  
+  mutate(x=1:nrow(ea)) %>% 
+  select(x, EA) %>% 
+  arrange(x) %>%
+  mutate(above.m = EA >= m) %>%
+  mutate(changed = is.na(lag(above.m)) | lag(above.m) != above.m) %>%
+  mutate(section.id = cumsum(changed)) %>%
+  select(-above.m, -changed)
+# calculate the x-coordinate of the midpoint between adjacent sections (the y-coordinate would be m), & add this to the data frame
+tmp <- rbind(
+  tmp,
+  tmp %>%
+    group_by(section.id) %>%
+    filter(x %in% c(min(x), max(x))) %>%
+    ungroup() %>%
+    mutate(mid.x = ifelse(section.id == 1 | 
+                            section.id == lag(section.id), 
+                          NA,
+                          x - (x - lag(x)) / 
+                            (EA - lag(EA)) * (EA - m))) %>% 
+    select(mid.x, EA, section.id) %>%
+    rename(x = mid.x) %>%
+    mutate(EA = m) %>%
+    na.omit())
+# transform back x into date
+tmp <- tmp %>% 
+  mutate(date=ea$date[x])
+
+p <- ggplot(tmp, aes(date, EA)) +      
+  geom_ribbon(data = . %>% filter(EA >= m),
+              aes(ymin = m, ymax = EA), 
+              fill="dodgerblue") +
+  geom_ribbon(data = . %>% filter(EA <= m),
+              aes(ymin = EA, ymax = m), 
+              fill = "firebrick1")+
+  xlab("")+
+  ylab("EA")
+p
+
+# decompose time series
+
+tmp <- ea
+tmp <- ts(tmp$EA, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+# decompose time series (from 1980 onwards)
+
+tmp <- subset(ea, year>1980)
+tmp <- ts(tmp$EA, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+tmp0 <- decompose(tmp)
+plot(tmp0$seasonal[1:12], type="o", pch=19, xlab="Month", ylab="Seasonal pattern")
+abline(h=0, lty=2)
+
+```
+
+Compute 1 index per year
+
+```{r}
+ea.df <- ea %>%
+  group_by(year) %>% 
+  summarise(EA.mean=mean(EA, na.rm=T),
+            EA.min=min(EA, na.rm=T),
+            EA.max=max(EA, na.rm=T),
+            EA.sd=sqrt(var(EA, na.rm=T)),
+            EA.q1=mean(EA[quarter==1], na.rm=T),
+            EA.q2=mean(EA[quarter==2], na.rm=T),
+            EA.q3=mean(EA[quarter==3], na.rm=T),
+            EA.q4=mean(EA[quarter==4], na.rm=T),
+            EA.s1=mean(EA[semester==1], na.rm=T),
+            EA.s2=mean(EA[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+```
+
+```{r, fig.width=15, fig.height=15}
+ggpairs(ea.df[, -1]) 
+```
+
+```{r}
+mat <- cor(ea.df[, -1], use="complete.obs") 
+p.mat <- cor_pmat(ea.df[, -1])
+
+ggcorrplot(mat, type = "lower", lab=T, p.mat = p.mat)
+```
+
+```{r}
+p <- ggplot(ea.df, aes(year, EA.mean)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea.df, aes(year, EA.mean)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea.df, aes(year, EA.mean)) +
+  geom_col(fill = "blue") +
+  xlab("")+
+  ylab("EA")
+p
+
+p <- ggplot(ea.df, aes(year, EA.mean)) +
+  geom_col(data = subset(ea.df, EA.mean <= 0), fill = "red") + 
+  geom_col(data = subset(ea.df, EA.mean > 0), fill = "blue") +
+  xlab("")+
+  ylab("EA")
+p
+
+```
+
+# NAO
+
+```{r}
+p <- ggplot(nao, aes(date, NAO)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao, aes(date, NAO)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao, aes(date, NAO)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao, aes(date, NAO)) +
+  geom_ribbon(aes(ymin=0, ymax=NAO), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao, aes(date, NAO)) +
+  geom_col(data = subset(nao, NAO <= 0), fill = "red") + 
+  geom_col(data = subset(nao, NAO > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(subset(nao, year>1980), aes(date, NAO)) +
+  geom_col(data = subset(nao, year>1980 & NAO <= 0), fill = "red") + 
+  geom_col(data = subset(nao, year>1980 & NAO > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("NAO")
+p
+
+
+# https://stackoverflow.com/questions/54687321/fill-area-above-and-below-horizontal-line-with-different-colors
+
+m <- 0
+# identify each run of points completely above (or below) the horizontal line as a new section
+tmp <- nao %>%  
+  mutate(x=1:nrow(nao)) %>% 
+  select(x, NAO) %>% 
+  arrange(x) %>%
+  mutate(above.m = NAO >= m) %>%
+  mutate(changed = is.na(lag(above.m)) | lag(above.m) != above.m) %>%
+  mutate(section.id = cumsum(changed)) %>%
+  select(-above.m, -changed)
+# calculate the x-coordinate of the midpoint between adjacent sections (the y-coordinate would be m), & add this to the data frame
+tmp <- rbind(
+  tmp,
+  tmp %>%
+    group_by(section.id) %>%
+    filter(x %in% c(min(x), max(x))) %>%
+    ungroup() %>%
+    mutate(mid.x = ifelse(section.id == 1 | 
+                            section.id == lag(section.id), 
+                          NA,
+                          x - (x - lag(x)) / 
+                            (NAO - lag(NAO)) * (NAO - m))) %>% 
+    select(mid.x, NAO, section.id) %>%
+    rename(x = mid.x) %>%
+    mutate(NAO = m) %>%
+    na.omit())
+# transform back x into date
+tmp <- tmp %>% 
+  mutate(date=nao$date[x])
+
+p <- ggplot(tmp, aes(date, NAO)) +      
+  geom_ribbon(data = . %>% filter(NAO >= m),
+              aes(ymin = m, ymax = NAO), 
+              fill="dodgerblue") +
+  geom_ribbon(data = . %>% filter(NAO <= m),
+              aes(ymin = NAO, ymax = m), 
+              fill = "firebrick1")+
+  xlab("")+
+  ylab("NAO")
+p
+
+# decompose time series
+
+tmp <- nao
+tmp <- ts(tmp$NAO, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+# decompose time series (from 1980 onwards)
+
+tmp <- subset(nao, year>1980)
+tmp <- ts(tmp$NAO, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+tmp0 <- decompose(tmp)
+plot(tmp0$seasonal[1:12], type="o", pch=19, xlab="Month", ylab="Seasonal pattern")
+abline(h=0, lty=2)
+
+```
+
+Compute 1 index per year
+
+```{r}
+nao.df <- nao %>%
+  group_by(year) %>% 
+  summarise(NAO.mean=mean(NAO, na.rm=T),
+            NAO.min=min(NAO, na.rm=T),
+            NAO.max=max(NAO, na.rm=T),
+            NAO.sd=sqrt(var(NAO, na.rm=T)),
+            NAO.q1=mean(NAO[quarter==1], na.rm=T),
+            NAO.q2=mean(NAO[quarter==2], na.rm=T),
+            NAO.q3=mean(NAO[quarter==3], na.rm=T),
+            NAO.q4=mean(NAO[quarter==4], na.rm=T),
+            NAO.s1=mean(NAO[semester==1], na.rm=T),
+            NAO.s2=mean(NAO[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+```
+
+```{r, fig.width=15, fig.height=15}
+ggpairs(nao.df[, -1]) 
+```
+
+```{r}
+mat <- cor(nao.df[, -1], use="complete.obs") 
+p.mat <- cor_pmat(nao.df[, -1])
+
+ggcorrplot(mat, type = "lower", lab=T, p.mat = p.mat)
+```
+
+```{r}
+p <- ggplot(nao.df, aes(year, NAO.mean)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao.df, aes(year, NAO.mean)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao.df, aes(year, NAO.mean)) +
+  geom_col(fill = "blue") +
+  xlab("")+
+  ylab("NAO")
+p
+
+p <- ggplot(nao.df, aes(year, NAO.mean)) +
+  geom_col(data = subset(nao.df, NAO.mean <= 0), fill = "red") + 
+  geom_col(data = subset(nao.df, NAO.mean > 0), fill = "blue") +
+  xlab("")+
+  ylab("NAO")
+p
+
+```
+
+# TURB
+
+```{r}
+p <- ggplot(turb, aes(date, TURB)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb, aes(date, TURB)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb, aes(date, TURB)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb, aes(date, TURB)) +
+  geom_ribbon(aes(ymin=0, ymax=TURB), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb, aes(date, TURB)) +
+  geom_col(data = subset(turb, TURB <= 0), fill = "red") + 
+  geom_col(data = subset(turb, TURB > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(subset(turb, year>1980), aes(date, TURB)) +
+  geom_col(data = subset(turb, year>1980 & TURB <= 0), fill = "red") + 
+  geom_col(data = subset(turb, year>1980 & TURB > 0), fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("TURB")
+p
+
+
+# https://stackoverflow.com/questions/54687321/fill-area-above-and-below-horizontal-line-with-different-colors
+
+m <- 0
+# identify each run of points completely above (or below) the horizontal line as a new section
+tmp <- turb %>%  
+  mutate(x=1:nrow(turb)) %>% 
+  select(x, TURB) %>% 
+  arrange(x) %>%
+  mutate(above.m = TURB >= m) %>%
+  mutate(changed = is.na(lag(above.m)) | lag(above.m) != above.m) %>%
+  mutate(section.id = cumsum(changed)) %>%
+  select(-above.m, -changed)
+# calculate the x-coordinate of the midpoint between adjacent sections (the y-coordinate would be m), & add this to the data frame
+tmp <- rbind(
+  tmp,
+  tmp %>%
+    group_by(section.id) %>%
+    filter(x %in% c(min(x), max(x))) %>%
+    ungroup() %>%
+    mutate(mid.x = ifelse(section.id == 1 | 
+                            section.id == lag(section.id), 
+                          NA,
+                          x - (x - lag(x)) / 
+                            (TURB - lag(TURB)) * (TURB - m))) %>% 
+    select(mid.x, TURB, section.id) %>%
+    rename(x = mid.x) %>%
+    mutate(TURB = m) %>%
+    na.omit())
+# transform back x into date
+tmp <- tmp %>% 
+  mutate(date=turb$date[x])
+
+p <- ggplot(tmp, aes(date, TURB)) +      
+  geom_ribbon(data = . %>% filter(TURB >= m),
+              aes(ymin = m, ymax = TURB), 
+              fill="dodgerblue") +
+  geom_ribbon(data = . %>% filter(TURB <= m),
+              aes(ymin = TURB, ymax = m), 
+              fill = "firebrick1")+
+  xlab("")+
+  ylab("TURB")
+p
+
+# decompose time series
+
+tmp <- turb
+tmp <- ts(tmp$TURB, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+# decompose time series (from 1980 onwards)
+
+tmp <- subset(turb, year>1980)
+tmp <- ts(tmp$TURB, frequency=12, start=c(tmp$year[1], tmp$month[1]))
+plot(decompose(tmp))
+
+tmp0 <- decompose(tmp)
+plot(tmp0$seasonal[1:12], type="o", pch=19, xlab="Month", ylab="Seasonal pattern")
+abline(h=0, lty=2)
+
+```
+
+Compute 1 index per year
+
+```{r}
+turb.df <- turb %>%
+  group_by(year) %>% 
+  summarise(TURB.mean=mean(TURB, na.rm=T),
+            TURB.min=min(TURB, na.rm=T),
+            TURB.max=max(TURB, na.rm=T),
+            TURB.sd=sqrt(var(TURB, na.rm=T)),
+            TURB.q1=mean(TURB[quarter==1], na.rm=T),
+            TURB.q2=mean(TURB[quarter==2], na.rm=T),
+            TURB.q3=mean(TURB[quarter==3], na.rm=T),
+            TURB.q4=mean(TURB[quarter==4], na.rm=T),
+            TURB.s1=mean(TURB[semester==1], na.rm=T),
+            TURB.s2=mean(TURB[semester==2], na.rm=T)) %>% 
+  as.data.frame()
+```
+
+```{r, fig.width=15, fig.height=15}
+ggpairs(turb.df[, -1]) 
+```
+
+```{r}
+mat <- cor(turb.df[, -1], use="complete.obs") 
+p.mat <- cor_pmat(turb.df[, -1])
+
+ggcorrplot(mat, type = "lower", lab=T, p.mat = p.mat)
+```
+
+```{r}
+p <- ggplot(turb.df, aes(year, TURB.mean)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb.df, aes(year, TURB.mean)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb.df, aes(year, TURB.mean)) +
+  geom_col(fill = "blue") +
+  xlab("")+
+  ylab("TURB")
+p
+
+p <- ggplot(turb.df, aes(year, TURB.mean)) +
+  geom_col(data = subset(turb.df, TURB.mean <= 0), fill = "red") + 
+  geom_col(data = subset(turb.df, TURB.mean > 0), fill = "blue") +
+  xlab("")+
+  ylab("TURB")
+p
+
+```
+
+# UI
+
+```{r}
+p <- ggplot(ui, aes(date, UI)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("UI")
+p
+
+p <- ggplot(ui, aes(date, UI)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("UI")
+p
+
+p <- ggplot(ui, aes(date, UI)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("UI")
+p
+
+p <- ggplot(ui, aes(date, UI)) +
+  geom_ribbon(aes(ymin=0, ymax=UI), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("UI")
+p
+
+# decompose cannot be applied on annual data becasuse there is no season defined
+
+```
+
+# WMLD
+
+```{r}
+p <- ggplot(wmld, aes(date, WMLD)) +
+  geom_point()+
+  geom_path()+
+  xlab("")+
+  ylab("WMLD")
+p
+
+p <- ggplot(wmld, aes(date, WMLD)) +
+  geom_point()+
+  geom_path()+
+  geom_smooth(method="loess", col=2, fill=2, alpha=0.4)+
+  xlab("")+
+  ylab("WMLD")
+p
+
+p <- ggplot(wmld, aes(date, WMLD)) +
+  geom_col(fill = "blue") +
+  geom_smooth(method="loess", col="black", fill="black", alpha=0.4)+
+  xlab("")+
+  ylab("WMLD")
+p
+
+p <- ggplot(wmld, aes(date, WMLD)) +
+  geom_ribbon(aes(ymin=0, ymax=WMLD), fill = "blue") + 
+  geom_hline(yintercept=0)+
+  xlab("")+
+  ylab("WMLD")
+p
+
+# decompose cannot be applied on annual data becasuse there is no season defined
+
+```
+
+# create a unique data frame
+
+```{r}
+df <- data.frame(year=1987:2021)
+
+df <- left_join(df, amo.df)
+df <- left_join(df, ea.df)
+df <- left_join(df, nao.df)
+df <- left_join(df, turb.df)
+df <- left_join(df, ui)
+df <- left_join(df, wmld)
+
+write.csv(df, file=file.path("..","data","env_data.csv"), row.names=F)
+```
+
+# Save objects
+
+```{r}
+#save.image(file=file.path("results","res_1_classic_SR_FLR.RData"))
+```
+
