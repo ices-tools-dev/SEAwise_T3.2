@@ -6,7 +6,7 @@ data.R:
 Data sources. Environmental data, i.e. air temperature is obtained from Kihnu weather station (58.09861°N, 23.97028°E), provided by the Estonian Weather Service. 
 Zooplankton data from BIOR. Gulf of Riga herring weight and SSB values are obtained from ICES 2023 report: https://doi.org/10.17895/ices.pub.23123768.v1 and Ojaveer et al. 2004.
 Time-period: 1961-2020.
-Data files (does not contain raw data, except SSB, age-1 abundance and 1-year old fish WAA): GoR_WAA1_2024
+Data files (does not contain raw data, except SSB, age-1 abundance and 1-year old fish WAA): updated data ifle GoR_WAA1_2025_16_07
 
 model.R:
 
